@@ -35,6 +35,7 @@ export default function ChatPanel({ messages, onSendMessage, isLoading = false }
 
   return (
     <div className="flex flex-col h-full">
+      {/* メッセージエリア - 固定高さでスクロール */}
       <div className="flex-1 overflow-hidden">
         <div
           ref={messagesContainerRef}
@@ -79,25 +80,28 @@ export default function ChatPanel({ messages, onSendMessage, isLoading = false }
         </div>
       </div>
       
-      <form onSubmit={handleSubmit} className="p-4 border-t">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Type a message..."
-            disabled={isLoading}
-            className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={isLoading || !inputValue.trim()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
-        </div>
-      </form>
+      {/* 入力エリア - 固定位置 */}
+      <div className="shrink-0 bg-white border-t">
+        <form onSubmit={handleSubmit} className="p-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Type a message..."
+              disabled={isLoading}
+              className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={isLoading || !inputValue.trim()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
