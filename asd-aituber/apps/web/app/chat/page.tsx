@@ -1,27 +1,34 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import ChatPanel from '@/components/ChatPanel'
+import { useChat } from '@/hooks/useChat'
 
 const VRMViewer = dynamic(() => import('@/components/VRMViewer'), {
   ssr: false,
 })
 
 export default function ChatPage() {
+  const { messages, isLoading, sendMessage } = useChat()
+
   return (
     <div className="flex h-screen">
       <div className="flex-1 relative">
         <VRMViewer modelUrl="/models/MyAvatar01_20241125134913.vrm" />
       </div>
-      <div className="w-96 bg-gray-100 p-4 flex flex-col">
-        <h2 className="text-xl font-bold mb-4">Chat</h2>
-        <div className="flex-1 overflow-y-auto mb-4 bg-white p-3 rounded border">
-          <p className="text-gray-600">Chat messages will appear here</p>
+      <div className="w-96 bg-gray-100">
+        <div className="h-full flex flex-col">
+          <div className="p-4 border-b bg-white">
+            <h2 className="text-xl font-bold">ASD-AITuber Chat</h2>
+          </div>
+          <div className="flex-1 bg-white">
+            <ChatPanel 
+              messages={messages} 
+              onSendMessage={sendMessage}
+              isLoading={isLoading}
+            />
+          </div>
         </div>
-        <input
-          type="text"
-          placeholder="Type a message..."
-          className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
       </div>
     </div>
   )
