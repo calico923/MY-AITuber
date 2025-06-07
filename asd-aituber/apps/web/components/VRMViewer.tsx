@@ -1,18 +1,87 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react'
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { VRMLoaderPlugin, VRM } from '@pixiv/three-vrm'
+import { VRMAnimationController } from '@/lib/vrm-animation'
+import type { Emotion } from '@asd-aituber/types'
 
-export default function VRMViewer({ modelUrl }: { modelUrl?: string }) {
-  const mountRef = useRef<HTMLDivElement>(null)
-  const sceneRef = useRef<THREE.Scene | null>(null)
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
-  const vrmRef = useRef<VRM | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export interface VRMViewerRef {
+  setEmotion: (emotion: Emotion) => void
+  setSpeaking: (intensity: number) => void
+  speakText: (text: string, onComplete?: () => void) => void
+  stopSpeaking: () => void
+  getAvailableExpressions: () => string[]
+}
+
+interface VRMViewerProps {
+  modelUrl?: string
+  emotion?: Emotion
+  isSpeaking?: boolean
+}
+
+const VRMViewer = forwardRef<VRMViewerRef, VRMViewerProps>(
+  ({ modelUrl, emotion = 'neutral', isSpeaking = false }, ref) => {
+    console.log('VRMViewer component rendered with ref:', ref)
+    const mountRef = useRef<HTMLDivElement>(null)
+    const sceneRef = useRef<THREE.Scene | null>(null)
+    const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
+    const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
+    const vrmRef = useRef<VRM | null>(null)
+    const animationControllerRef = useRef<VRMAnimationController | null>(null)
+    const clockRef = useRef<THREE.Clock>(new THREE.Clock())
+    const controlsRef = useRef<OrbitControls | null>(null)
+    const [isLoading, setIsLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const [availableExpressions, setAvailableExpressions] = useState<string[]>([])
+
+    // 外部から呼び出し可能なメソッドを公開
+    useImperativeHandle(ref, () => {
+      console.log('VRMViewer useImperativeHandle setup, animation controller available:', !!animationControllerRef.current)
+      return {
+        setEmotion: (newEmotion: Emotion) => {
+          if (animationControllerRef.current) {
+            animationControllerRef.current.setEmotion(newEmotion)
+          }
+        },
+        setSpeaking: (intensity: number) => {
+          if (animationControllerRef.current) {
+            animationControllerRef.current.setSpeaking(intensity)
+          }
+        },
+        speakText: (text: string, onComplete?: () => void) => {
+          console.log('VRMViewer.speakText called with:', text)
+          if (animationControllerRef.current) {
+            console.log('Animation controller available, calling speakText')
+            animationControllerRef.current.speakText(text, onComplete)
+          } else {
+            console.warn('Animation controller not available for speakText')
+          }
+        },
+        stopSpeaking: () => {
+          if (animationControllerRef.current) {
+            animationControllerRef.current.stopSpeaking()
+          }
+        },
+        getAvailableExpressions: () => availableExpressions
+      }
+    }, [availableExpressions])
+
+    // 感情変化の監視
+    useEffect(() => {
+      if (animationControllerRef.current) {
+        animationControllerRef.current.setEmotion(emotion)
+      }
+    }, [emotion])
+
+    // 話している状態の監視
+    useEffect(() => {
+      if (animationControllerRef.current) {
+        animationControllerRef.current.setSpeaking(isSpeaking ? 0.7 : 0)
+      }
+    }, [isSpeaking])
 
   useEffect(() => {
     if (!mountRef.current) return
@@ -27,9 +96,9 @@ export default function VRMViewer({ modelUrl }: { modelUrl?: string }) {
     sceneRef.current = scene
     scene.background = new THREE.Color(0x87ceeb)
 
-    // Camera setup
+    // Camera setup - 全身が見えるように調整
     const camera = new THREE.PerspectiveCamera(30, width / height, 0.1, 20)
-    camera.position.set(0, 1.4, 2)
+    camera.position.set(0, 1.2, 3.5)  // 少し後ろに引いて全身を表示
     cameraRef.current = camera
 
     // Renderer setup
@@ -49,6 +118,18 @@ export default function VRMViewer({ modelUrl }: { modelUrl?: string }) {
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
     scene.add(ambientLight)
+
+    // OrbitControls setup
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.target.set(0, 1.0, 0)  // VRMの胸の高さを見る
+    controls.enableDamping = true   // スムーズな操作
+    controls.dampingFactor = 0.05
+    controls.minDistance = 1.5      // 最小ズーム距離
+    controls.maxDistance = 8        // 最大ズーム距離
+    controls.minPolarAngle = Math.PI * 0.1  // 上からの角度制限
+    controls.maxPolarAngle = Math.PI * 0.8  // 下からの角度制限
+    controls.update()
+    controlsRef.current = controls
 
     // Add a simple cube for testing if no model is provided
     if (!modelUrl) {
@@ -73,6 +154,22 @@ export default function VRMViewer({ modelUrl }: { modelUrl?: string }) {
             vrmRef.current = vrm
             scene.add(vrm.scene)
             vrm.scene.rotation.y = Math.PI
+            
+            // 1フレーム待ってからアニメーションコントローラーを初期化
+            requestAnimationFrame(() => {
+              console.log('Initializing VRM animation controller...')
+              // アニメーションコントローラーを初期化
+              animationControllerRef.current = new VRMAnimationController(vrm)
+              animationControllerRef.current.setEmotion(emotion)
+              
+              // 利用可能な表情を取得
+              const expressions = animationControllerRef.current.getAvailableExpressions()
+              setAvailableExpressions(expressions)
+              console.log('Available VRM expressions:', expressions)
+              console.log('VRM animation controller initialized successfully')
+              console.log('VRM initial pose set')
+            })
+            
             setIsLoading(false)
           } else {
             setError('Failed to load VRM from GLTF')
@@ -84,7 +181,7 @@ export default function VRMViewer({ modelUrl }: { modelUrl?: string }) {
         },
         (error) => {
           console.error('Error loading VRM:', error)
-          setError(`Error loading VRM: ${error.message}`)
+          setError(`Error loading VRM: ${error instanceof Error ? error.message : 'Unknown error'}`)
           setIsLoading(false)
         }
       )
@@ -94,8 +191,21 @@ export default function VRMViewer({ modelUrl }: { modelUrl?: string }) {
     const animate = () => {
       requestAnimationFrame(animate)
       
+      const deltaTime = clockRef.current.getDelta()
+      
+      // コントロールの更新
+      if (controlsRef.current) {
+        controlsRef.current.update()
+      }
+      
+      // VRMの基本更新
       if (vrmRef.current) {
-        vrmRef.current.update(1 / 60)
+        vrmRef.current.update(deltaTime)
+      }
+      
+      // カスタムアニメーションの更新
+      if (animationControllerRef.current) {
+        animationControllerRef.current.update(deltaTime)
       }
 
       renderer.render(scene, camera)
@@ -111,12 +221,20 @@ export default function VRMViewer({ modelUrl }: { modelUrl?: string }) {
       camera.aspect = newWidth / newHeight
       camera.updateProjectionMatrix()
       renderer.setSize(newWidth, newHeight)
+      
+      // コントロールのサイズ更新
+      if (controlsRef.current) {
+        controlsRef.current.update()
+      }
     }
     window.addEventListener('resize', handleResize)
 
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize)
+      if (controlsRef.current) {
+        controlsRef.current.dispose()
+      }
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement)
       }
@@ -124,24 +242,44 @@ export default function VRMViewer({ modelUrl }: { modelUrl?: string }) {
     }
   }, [modelUrl])
 
-  return (
-    <div className="w-full h-full relative">
-      <div ref={mountRef} className="w-full h-full" />
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-75">
-          <div className="text-lg">Loading VRM model...</div>
+    return (
+      <div className="w-full h-full relative">
+        <div ref={mountRef} className="w-full h-full" />
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-75">
+            <div className="text-lg">Loading VRM model...</div>
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-75">
+            <div className="text-red-600">{error}</div>
+          </div>
+        )}
+        {!modelUrl && !isLoading && (
+          <div className="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white p-2 rounded">
+            Test cube (no VRM model loaded)
+          </div>
+        )}
+        
+        {/* カメラ操作説明 */}
+        <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white p-2 rounded text-xs">
+          <div>🖱️ ドラッグ: 回転</div>
+          <div>🔍 ホイール: ズーム</div>
+          <div>⌨️ 右クリック+ドラッグ: パン</div>
         </div>
-      )}
-      {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-75">
-          <div className="text-red-600">{error}</div>
-        </div>
-      )}
-      {!modelUrl && !isLoading && (
-        <div className="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white p-2 rounded">
-          Test cube (no VRM model loaded)
-        </div>
-      )}
-    </div>
-  )
-}
+
+        {availableExpressions.length > 0 && (
+          <div className="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white p-2 rounded text-xs">
+            <div>Available expressions: {availableExpressions.length}</div>
+            <div>Current emotion: {emotion}</div>
+            {isSpeaking && <div>🗣️ Speaking</div>}
+          </div>
+        )}
+      </div>
+    )
+  }
+)
+
+VRMViewer.displayName = 'VRMViewer'
+
+export default VRMViewer
