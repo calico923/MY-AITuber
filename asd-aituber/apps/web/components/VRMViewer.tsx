@@ -198,14 +198,30 @@ const VRMViewer = forwardRef<VRMViewerRef, VRMViewerProps>(
         controlsRef.current.update()
       }
       
-      // VRMの基本更新
-      if (vrmRef.current) {
-        vrmRef.current.update(deltaTime)
-      }
-      
-      // カスタムアニメーションの更新
+      // カスタムアニメーションの更新（VRM更新の前に実行）
       if (animationControllerRef.current) {
         animationControllerRef.current.update(deltaTime)
+      }
+      
+      // VRMの基本更新（expressionManagerの変更を反映）
+      if (vrmRef.current) {
+        // 表情の現在値をデバッグ出力（一定間隔で）
+        if (Math.floor(performance.now() / 1000) !== Math.floor((performance.now() - 16) / 1000)) {
+          const expressionManager = vrmRef.current.expressionManager
+          if (expressionManager) {
+            try {
+              const aaValue = expressionManager.getValue('aa')
+              const happyValue = expressionManager.getValue('happy')
+              if (aaValue > 0 || happyValue > 0) {
+                console.log(`[VRMViewer] Expression values: aa=${aaValue.toFixed(3)}, happy=${happyValue.toFixed(3)}`)
+              }
+            } catch {
+              // Silent fail for non-existent expressions
+            }
+          }
+        }
+        
+        vrmRef.current.update(deltaTime)
       }
 
       renderer.render(scene, camera)

@@ -111,16 +111,23 @@ export class LipSync {
       // 現在の音韻を見つける
       let accumulatedTime = 0
       let currentPhoneme: PhonemeData | null = null
+      let phonemeIndex = -1
 
       for (let i = 0; i < phonemes.length; i++) {
         if (elapsedTime >= accumulatedTime && elapsedTime < accumulatedTime + phonemes[i].duration) {
           currentPhoneme = phonemes[i]
+          phonemeIndex = i
           break
         }
         accumulatedTime += phonemes[i].duration
       }
 
       if (currentPhoneme) {
+        // 前回と異なる音韻の場合のみインデックス更新（ログは削除）
+        if (phonemeIndex !== currentIndex) {
+          currentIndex = phonemeIndex
+        }
+        
         // 音韻の変化を通知
         if (this.onPhonemeChange) {
           const intensity = currentPhoneme.phoneme === 'silence' ? 0 : currentPhoneme.intensity
@@ -158,6 +165,7 @@ export class LipSync {
     
     const finalOptions = { ...defaultOptions, ...options }
     const phonemes = LipSync.textToPhonemes(text, finalOptions)
+    console.log(`[LipSync] Generated ${phonemes.length} phonemes for text: "${text.substring(0, 20)}..."`)
     this.play(phonemes, onPhonemeChange, onComplete)
   }
 

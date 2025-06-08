@@ -7,7 +7,7 @@ import { useChat } from '@/hooks/useChat'
 import VRMViewer from '@/components/VRMViewer'
 import type { VRMViewerRef } from '@/components/VRMViewer'
 import type { Emotion } from '@asd-aituber/types'
-import { useSimpleSpeech } from '@/hooks/useSpeechSynthesis'
+import { useSimpleUnifiedVoice } from '@/hooks/useUnifiedVoiceSynthesis'
 
 export default function ChatPage() {
   const { messages, isLoading, sendMessage, mode, changeMode } = useChat()
@@ -16,12 +16,12 @@ export default function ChatPage() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [mounted, setMounted] = useState(false)
   
-  // 音声合成機能
-  const { speak: speakText, stop: stopSpeech, isSpeaking: isVoiceSpeaking } = useSimpleSpeech({
-    lang: 'ja-JP',
-    rate: 1.0,
-    pitch: 1.0,
-    volume: 0.8
+  // 音声合成機能（VOICEVOX統合）
+  const { speak: speakText, stop: stopSpeech, isSpeaking: isVoiceSpeaking, currentEngine } = useSimpleUnifiedVoice({
+    preferredEngine: 'auto', // VOICEVOXが利用可能なら自動選択
+    defaultMode: mode === 'asd' ? 'asd' : 'nt', // チャットモードと連動
+    volume: 0.8,
+    callbacks: {} // コールバックは speak 時に個別に設定
   })
   
   // クライアントサイドでのみマウント
@@ -34,54 +34,103 @@ export default function ChatPage() {
     if (messages.length === 0) return
 
     const lastMessage = messages[messages.length - 1]
+    console.log('[ChatPage] ===== 新しいメッセージ検出 =====')
+    console.log('[ChatPage] Role:', lastMessage.role)
+    console.log('[ChatPage] Content:', lastMessage.content)
+    console.log('[ChatPage] Emotion:', lastMessage.emotion)
     
     if (lastMessage.role === 'assistant') {
+      console.log('[ChatPage] アシスタントメッセージのため、音声合成を開始します')
       // assistantメッセージの感情を反映
       if (lastMessage.emotion) {
         setCurrentEmotion(lastMessage.emotion)
       }
       
       // 音声合成とリップシンク
-      const speakWithLipSync = () => {
+      const speakWithLipSync = async () => {
+        console.log('[ChatPage] Starting speakWithLipSync')
+        console.log('[ChatPage] Message content:', lastMessage.content)
+        console.log('[ChatPage] Current engine:', currentEngine)
+        
         // 既存の音声を停止
         stopSpeech()
         
-        // 音声合成で話す
-        speakText(lastMessage.content)
-        
-        // VRMリップシンクも同時に実行
+        // VRMリップシンクを開始
         if (vrmViewerRef.current) {
-          vrmViewerRef.current.speakText(lastMessage.content, () => {
-            setIsSpeaking(false)
-            // 話し終わったら3秒後に表情をneutralに戻す
-            setTimeout(() => {
-              if (vrmViewerRef.current) {
-                vrmViewerRef.current.setEmotion('neutral')
-                setCurrentEmotion('neutral')
-              }
-            }, 3000)
+          console.log('[ChatPage] VRMViewer is available')
+          setIsSpeaking(true)
+          
+          // 先にリップシンクを開始
+          console.log('[ChatPage] Starting VRM lip sync first')
+          if (vrmViewerRef.current.speakText) {
+            vrmViewerRef.current.speakText(lastMessage.content, () => {
+              console.log('[ChatPage] VRM lip sync completed')
+            })
+          }
+          
+          // 音声合成で話す（感情とモードを考慮）
+          console.log('[ChatPage] Starting voice synthesis with options:', {
+            emotion: lastMessage.emotion || 'neutral',
+            mode: mode === 'asd' ? 'asd' : 'nt'
           })
-          setIsSpeaking(true)
+          
+          await speakText(lastMessage.content, {
+            emotion: lastMessage.emotion || 'neutral',
+            mode: mode === 'asd' ? 'asd' : 'nt',
+            callbacks: {
+              onStart: () => {
+                console.log('[ChatPage] Voice synthesis started callback triggered')
+              },
+              onEnd: () => {
+                console.log('[ChatPage] Voice synthesis ended callback triggered')
+                console.log('[ChatPage] ===== 音声会話完了 =====')
+                setIsSpeaking(false)
+                // 話し終わったら3秒後に表情をneutralに戻す
+                setTimeout(() => {
+                  if (vrmViewerRef.current) {
+                    console.log('[ChatPage] Resetting emotion to neutral')
+                    vrmViewerRef.current.setEmotion('neutral')
+                    setCurrentEmotion('neutral')
+                  }
+                }, 3000)
+              },
+              onError: (error) => {
+                console.error('[ChatPage] Speech synthesis error:', error)
+                setIsSpeaking(false)
+              }
+            }
+          })
         } else {
-          // VRMViewerが利用できない場合のフォールバック
-          setIsSpeaking(true)
-          const speakingDuration = Math.max(1000, lastMessage.content.length * 50)
-          setTimeout(() => {
-            setIsSpeaking(false)
-            // フォールバックでも3秒後に表情をリセット
-            setTimeout(() => {
-              setCurrentEmotion('neutral')
-            }, 3000)
-          }, speakingDuration)
+          console.log('[ChatPage] VRMViewer not available, playing voice only')
+          // VRMViewerが利用できない場合は音声のみ再生
+          await speakText(lastMessage.content, {
+            emotion: lastMessage.emotion || 'neutral',
+            mode: mode === 'asd' ? 'asd' : 'nt',
+            callbacks: {
+              onStart: () => {
+                console.log('[ChatPage] Voice-only: synthesis started')
+                setIsSpeaking(true)
+              },
+              onEnd: () => {
+                console.log('[ChatPage] Voice-only: synthesis ended')
+                setIsSpeaking(false)
+                setTimeout(() => setCurrentEmotion('neutral'), 3000)
+              }
+            }
+          })
         }
       }
       
       // VRMViewerの準備ができるまで少し待つ
       if (vrmViewerRef.current) {
+        console.log('[ChatPage] VRMViewer is ready, executing speakWithLipSync immediately')
         speakWithLipSync()
       } else {
+        console.log('[ChatPage] VRMViewer not ready, waiting 500ms')
         setTimeout(speakWithLipSync, 500)
       }
+    } else {
+      console.log('[ChatPage] Not an assistant message, skipping voice synthesis')
     }
   }, [messages])
 
@@ -124,7 +173,7 @@ export default function ChatPage() {
           <h2 className="text-xl font-bold">ASD-AITuber Chat</h2>
           <div className="text-sm text-gray-500 mt-1">
             Mode: {mode} | Emotion: {currentEmotion}
-            {(isSpeaking || isVoiceSpeaking) && ' | 🔊 Speaking'}
+            {(isSpeaking || isVoiceSpeaking) && ` | 🔊 Speaking (${currentEngine})`}
           </div>
         </div>
         

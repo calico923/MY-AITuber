@@ -49,6 +49,7 @@ export class VRMAnimationController {
     this.updateBreathing()
     this.updateEmotion()
     this.updateIdleAnimation()
+    this.updateLipSync() // リップシンクの更新を追加
   }
 
   /**
@@ -304,7 +305,10 @@ export class VRMAnimationController {
 
     try {
       if (expressionManager.getExpressionTrackName(expressionName)) {
+        console.log(`[VRMAnimationController] Setting expression: ${expressionName} = ${value.toFixed(2)}`)
         expressionManager.setValue(expressionName, value)
+      } else {
+        console.warn(`[VRMAnimationController] Expression '${expressionName}' not available`)
       }
     } catch (error) {
       console.warn(`Failed to set expression ${expressionName}:`, error)
@@ -333,26 +337,60 @@ export class VRMAnimationController {
    * @param onComplete - 完了時のコールバック
    */
   speakText(text: string, onComplete?: () => void): void {
+    console.log('[VRMAnimationController] speakText called - using simple lip sync')
     this.isSpeaking = true
     
-    this.lipSync.playText(
-      text,
-      (phoneme: string, intensity: number) => {
-        this.setMouthShape(phoneme, intensity)
-      },
-      () => {
+    // aituber-kit方式：シンプルなボリューム基盤のリップシンク
+    this.startSimpleLipSync(text.length, onComplete)
+  }
+  
+  /**
+   * シンプルなリップシンク（aituber-kit方式）
+   */
+  private startSimpleLipSync(textLength: number, onComplete?: () => void): void {
+    // 文字数に基づいて話す時間を計算
+    const duration = Math.max(1000, textLength * 100) // 文字あたり100ms、最低1秒
+    const startTime = performance.now()
+    
+    console.log(`[VRMAnimationController] Starting simple lip sync for ${duration}ms`)
+    
+    const animate = () => {
+      const elapsed = performance.now() - startTime
+      const progress = elapsed / duration
+      
+      if (progress < 1 && this.isSpeaking) {
+        // サイン波でボリュームを変動させて、適当に口を動かしてるだけ
+        const volume = (Math.sin(elapsed * 0.01) + 1) * 0.4 + 0.1
+        
+        // 直接'aa'表情を設定
+        const expressionManager = this.vrm.expressionManager
+        if (expressionManager) {
+          try {
+            if (expressionManager.getExpressionTrackName('aa')) {
+              expressionManager.setValue('aa', volume)
+              console.log(`[VRMAnimationController] Simple lip sync: setting 'aa' to ${volume.toFixed(3)}`)
+            } else if (expressionManager.getExpressionTrackName('happy')) {
+              expressionManager.setValue('happy', volume * 0.3)
+              console.log(`[VRMAnimationController] Simple lip sync: setting 'happy' to ${(volume * 0.3).toFixed(3)}`)
+            }
+          } catch (error) {
+            console.error('[VRMAnimationController] Error in simple lip sync:', error)
+          }
+        }
+        
+        requestAnimationFrame(animate)
+      } else {
+        // リップシンク終了
+        console.log('[VRMAnimationController] Simple lip sync completed')
         this.isSpeaking = false
         this.setMouthShape('silence', 0)
         if (onComplete) {
           onComplete()
         }
-      },
-      {
-        speed: 6,        // 少し遅めに話す
-        intensity: 0.8,  // はっきりとした口の動き
-        pauseDuration: 400 // 長めの休止
       }
-    )
+    }
+    
+    animate()
   }
 
   /**
@@ -362,29 +400,242 @@ export class VRMAnimationController {
    */
   private setMouthShape(phoneme: string, intensity: number): void {
     const expressionManager = this.vrm.expressionManager
+    if (!expressionManager) {
+      console.warn('[VRMAnimationController] No expression manager available')
+      return
+    }
+
+    console.log(`[VRMAnimationController] setMouthShape: ${phoneme}, intensity: ${intensity.toFixed(2)}`)
+
+    // 利用可能な表情を確認（初回のみログ出力）
+    if (this.vowelExpressionInfo === undefined) {
+      this.vowelExpressionInfo = this.checkVowelExpressions()
+      console.log('[VRMAnimationController] Mouth expressions:', this.vowelExpressionInfo)
+    }
+    
+    if (this.vowelExpressionInfo.type !== 'none') {
+      // 口の表情が利用可能な場合
+      this.setMouthExpression(phoneme, intensity)
+    } else {
+      // 口の表情が利用できない場合は代替処理
+      this.setAlternativeMouthShape(phoneme, intensity)
+    }
+  }
+  
+  private vowelExpressionInfo?: { type: 'standard' | 'legacy' | 'none', available: string[] }
+  private alternativeLogShown?: boolean
+  
+  /**
+   * 口の表情の存在を確認（VRM標準表情優先）
+   */
+  private checkVowelExpressions(): { type: 'standard' | 'legacy' | 'none', available: string[] } {
+    const expressionManager = this.vrm.expressionManager
+    if (!expressionManager) return { type: 'none', available: [] }
+    
+    // 全ての利用可能な表情を詳細にログ出力
+    this.debugAllExpressions()
+    
+    // VRM標準表情をチェック
+    const standardMouthExpressions = ['aa', 'ih', 'ou', 'ee', 'oh']
+    const availableStandard = standardMouthExpressions.filter(expr => {
+      try {
+        const trackName = expressionManager.getExpressionTrackName(expr)
+        if (trackName) {
+          console.log(`[VRMAnimationController] Found standard expression: ${expr} -> ${trackName}`)
+          return true
+        }
+        return false
+      } catch {
+        return false
+      }
+    })
+    
+    if (availableStandard.length > 0) {
+      return { type: 'standard', available: availableStandard }
+    }
+    
+    // 旧形式の母音表情をチェック
+    const legacyVowels = ['a', 'i', 'u', 'e', 'o']
+    const availableLegacy = legacyVowels.filter(vowel => {
+      try {
+        const trackName = expressionManager.getExpressionTrackName(vowel)
+        if (trackName) {
+          console.log(`[VRMAnimationController] Found legacy expression: ${vowel} -> ${trackName}`)
+          return true
+        }
+        return false
+      } catch {
+        return false
+      }
+    })
+    
+    if (availableLegacy.length > 0) {
+      return { type: 'legacy', available: availableLegacy }
+    }
+    
+    return { type: 'none', available: [] }
+  }
+  
+  /**
+   * デバッグ用：全ての利用可能な表情を出力
+   */
+  private debugAllExpressions(): void {
+    const expressionManager = this.vrm.expressionManager
     if (!expressionManager) return
 
+    console.log('[VRMAnimationController] === Debugging all expressions ===')
+    
+    try {
+      // expressionMapから全ての表情を取得
+      if (expressionManager.expressionMap) {
+        const allExpressions = Object.keys(expressionManager.expressionMap)
+        console.log('[VRMAnimationController] All expressions in expressionMap:', allExpressions)
+        
+        // 各表情の詳細情報
+        allExpressions.forEach(expr => {
+          try {
+            const trackName = expressionManager.getExpressionTrackName(expr)
+            const currentValue = expressionManager.getValue(expr)
+            console.log(`[VRMAnimationController] Expression "${expr}": track="${trackName}", value=${currentValue}`)
+          } catch (error) {
+            console.log(`[VRMAnimationController] Expression "${expr}": Error accessing - ${error}`)
+          }
+        })
+      } else {
+        console.log('[VRMAnimationController] No expressionMap available')
+      }
+    } catch (error) {
+      console.error('[VRMAnimationController] Error debugging expressions:', error)
+    }
+    
+    console.log('[VRMAnimationController] === End expression debug ===')
+  }
+  
+  /**
+   * 口の表情を設定（VRM標準またはレガシー形式）
+   */
+  private setMouthExpression(phoneme: string, intensity: number): void {
+    const expressionManager = this.vrm.expressionManager!
+    const info = this.vowelExpressionInfo!
+    
+    if (info.type === 'standard') {
+      this.setStandardMouthExpression(phoneme, intensity)
+    } else if (info.type === 'legacy') {
+      this.setLegacyVowelExpression(phoneme, intensity)
+    }
+  }
+  
+  /**
+   * VRM標準の口表情を設定（aituber-kit方式）
+   */
+  private setStandardMouthExpression(phoneme: string, intensity: number): void {
+    const expressionManager = this.vrm.expressionManager!
+    const available = this.vowelExpressionInfo!.available
+    
+    // 全ての口表情をリセット
+    const allMouthExpressions = ['aa', 'ih', 'ou', 'ee', 'oh']
+    allMouthExpressions.forEach(expr => {
+      if (available.includes(expr)) {
+        try {
+          expressionManager.setValue(expr, 0)
+        } catch (error) {
+          // Skip silently
+        }
+      }
+    })
+
+    // aituber-kit方式：主に'aa'表情を使用
+    if (phoneme !== 'silence' && available.includes('aa')) {
+      try {
+        console.log(`[VRMAnimationController] Setting 'aa' expression to ${intensity}`)
+        expressionManager.setValue('aa', intensity)
+        
+        // 設定後の値を確認
+        const currentValue = expressionManager.getValue('aa')
+        console.log(`[VRMAnimationController] 'aa' expression value after setting: ${currentValue}`)
+        
+        if (!this.alternativeLogShown) {
+          console.log('[VRMAnimationController] Using VRM standard \'aa\' expression for lip sync')
+          this.alternativeLogShown = true
+        }
+      } catch (error) {
+        console.error(`[VRMAnimationController] Error setting 'aa' expression:`, error)
+      }
+    } else {
+      console.log(`[VRMAnimationController] Skipping 'aa' - phoneme: ${phoneme}, available: ${available.join(', ')}`)
+    }
+  }
+  
+  /**
+   * レガシー母音表情を設定
+   */
+  private setLegacyVowelExpression(phoneme: string, intensity: number): void {
+    const expressionManager = this.vrm.expressionManager!
+    const available = this.vowelExpressionInfo!.available
+    
     // 全ての母音をリセット
     const vowels = ['a', 'i', 'u', 'e', 'o']
     vowels.forEach(vowel => {
-      try {
-        if (expressionManager.getExpressionTrackName(vowel)) {
+      if (available.includes(vowel)) {
+        try {
           expressionManager.setValue(vowel, 0)
+        } catch (error) {
+          // Skip silently
         }
-      } catch (error) {
-        // Expression not available, skip silently
       }
     })
 
     // 指定された音韻を設定
     if (phoneme !== 'silence' && vowels.includes(phoneme)) {
       try {
-        if (expressionManager.getExpressionTrackName(phoneme)) {
+        if (available.includes(phoneme)) {
           expressionManager.setValue(phoneme, intensity)
+          if (!this.alternativeLogShown) {
+            console.log(`[VRMAnimationController] Using legacy vowel '${phoneme}' expression for lip sync`)
+            this.alternativeLogShown = true
+          }
         }
       } catch (error) {
-        // Expression not available, skip silently
+        console.error(`[VRMAnimationController] Error setting expression '${phoneme}':`, error)
       }
+    }
+  }
+  
+  /**
+   * 代替の口の動きを設定（母音表情がない場合）
+   */
+  private setAlternativeMouthShape(phoneme: string, intensity: number): void {
+    const expressionManager = this.vrm.expressionManager!
+    
+    // neutralまたは他の表情を使って口の動きをシミュレート
+    try {
+      // 話している時は軽く口を開ける動作をシミュレート
+      if (phoneme !== 'silence') {
+        // happyやsurprisedなど、口が開く表情があれば使用
+        if (expressionManager.getExpressionTrackName('happy')) {
+          expressionManager.setValue('happy', intensity * 0.3) // 軽く笑顔で口を開ける
+          if (!this.alternativeLogShown) {
+            console.log('[VRMAnimationController] Using happy expression for lip sync')
+            this.alternativeLogShown = true
+          }
+        } else if (expressionManager.getExpressionTrackName('surprised')) {
+          expressionManager.setValue('surprised', intensity * 0.2) // 軽く驚いた表情
+          if (!this.alternativeLogShown) {
+            console.log('[VRMAnimationController] Using surprised expression for lip sync')
+            this.alternativeLogShown = true
+          }
+        }
+      } else {
+        // 口を閉じる
+        if (expressionManager.getExpressionTrackName('happy')) {
+          expressionManager.setValue('happy', 0)
+        }
+        if (expressionManager.getExpressionTrackName('surprised')) {
+          expressionManager.setValue('surprised', 0)
+        }
+      }
+    } catch (error) {
+      console.log('[VRMAnimationController] Alternative mouth shape failed:', error)
     }
   }
 
@@ -620,6 +871,16 @@ export class VRMAnimationController {
   }
 
   /**
+   * リップシンクの更新（VRMの更新サイクルと同期）
+   */
+  private updateLipSync(): void {
+    // LipSyncクラス内部でのrequestAnimationFrameに依存せず
+    // VRMのupdateサイクルと同期してリップシンクを更新
+    // 現在の実装では何もしない（既存のLipSyncクラスがrequestAnimationFrameを使用）
+    // 将来的にここでリップシンクの同期処理を実装
+  }
+
+  /**
    * 利用可能な表情リストを取得
    */
   getAvailableExpressions(): string[] {
@@ -641,6 +902,22 @@ export class VRMAnimationController {
         // Expression not available, skip silently
       }
     })
+
+    // 母音の表情が利用可能かチェック
+    const vowels = ['a', 'i', 'u', 'e', 'o']
+    const availableVowels = vowels.filter(vowel => expressions.includes(vowel))
+    console.log('[VRMAnimationController] Available vowel expressions:', availableVowels)
+    console.log('[VRMAnimationController] All available expressions:', expressions)
+    
+    // VRM標準的な口の表情も確認
+    const standardMouthExpressions = ['aa', 'ih', 'ou', 'ee', 'oh', 'neutral']
+    const availableStandardMouthExpressions = standardMouthExpressions.filter(expr => expressions.includes(expr))
+    console.log('[VRMAnimationController] Available standard mouth expressions:', availableStandardMouthExpressions)
+    
+    // 旧形式の母音表情も確認
+    const legacyVowels = ['a', 'i', 'u', 'e', 'o']
+    const availableLegacyVowels = legacyVowels.filter(vowel => expressions.includes(vowel))
+    console.log('[VRMAnimationController] Available legacy vowel expressions:', availableLegacyVowels)
 
     return expressions
   }
