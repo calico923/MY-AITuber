@@ -7,6 +7,7 @@ import { useChat } from '@/hooks/useChat'
 import VRMViewer from '@/components/VRMViewer'
 import type { VRMViewerRef } from '@/components/VRMViewer'
 import type { Emotion } from '@asd-aituber/types'
+import { useSimpleSpeech } from '@/hooks/useSpeechSynthesis'
 
 export default function ChatPage() {
   const { messages, isLoading, sendMessage, mode, changeMode } = useChat()
@@ -14,6 +15,14 @@ export default function ChatPage() {
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>('neutral')
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [mounted, setMounted] = useState(false)
+  
+  // 音声合成機能
+  const { speak: speakText, stop: stopSpeech, isSpeaking: isVoiceSpeaking } = useSimpleSpeech({
+    lang: 'ja-JP',
+    rate: 1.0,
+    pitch: 1.0,
+    volume: 0.8
+  })
   
   // クライアントサイドでのみマウント
   useEffect(() => {
@@ -32,8 +41,15 @@ export default function ChatPage() {
         setCurrentEmotion(lastMessage.emotion)
       }
       
-      // リップシンク付きで話す
-      const attemptLipSync = () => {
+      // 音声合成とリップシンク
+      const speakWithLipSync = () => {
+        // 既存の音声を停止
+        stopSpeech()
+        
+        // 音声合成で話す
+        speakText(lastMessage.content)
+        
+        // VRMリップシンクも同時に実行
         if (vrmViewerRef.current) {
           vrmViewerRef.current.speakText(lastMessage.content, () => {
             setIsSpeaking(false)
@@ -62,9 +78,9 @@ export default function ChatPage() {
       
       // VRMViewerの準備ができるまで少し待つ
       if (vrmViewerRef.current) {
-        attemptLipSync()
+        speakWithLipSync()
       } else {
-        setTimeout(attemptLipSync, 500)
+        setTimeout(speakWithLipSync, 500)
       }
     }
   }, [messages])
@@ -74,12 +90,14 @@ export default function ChatPage() {
     if (isLoading) {
       setCurrentEmotion('neutral')
       setIsSpeaking(false)
+      // 進行中の音声合成を停止
+      stopSpeech()
       // 進行中のリップシンクを停止
       if (vrmViewerRef.current) {
         vrmViewerRef.current.stopSpeaking()
       }
     }
-  }, [isLoading])
+  }, [isLoading, stopSpeech])
 
   return (
     <div className="flex h-screen">
@@ -106,6 +124,7 @@ export default function ChatPage() {
           <h2 className="text-xl font-bold">ASD-AITuber Chat</h2>
           <div className="text-sm text-gray-500 mt-1">
             Mode: {mode} | Emotion: {currentEmotion}
+            {(isSpeaking || isVoiceSpeaking) && ' | 🔊 Speaking'}
           </div>
         </div>
         

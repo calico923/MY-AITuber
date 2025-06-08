@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "next dev -p 3002",
+    "dev:https": "HTTPS=true SSL_CRT_FILE=cert.pem SSL_KEY_FILE=key.pem next dev -p 3002",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -18,10 +19,13 @@
   "dependencies": {
     "@asd-aituber/types": "workspace:*",
     "@pixiv/three-vrm": "^3.4.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.513.0",
     "next": "14",
     "openai": "^5.1.1",
     "react": "18",
     "react-dom": "18",
+    "tailwind-merge": "^3.3.0",
     "three": "^0.177.0"
   },
   "devDependencies": {

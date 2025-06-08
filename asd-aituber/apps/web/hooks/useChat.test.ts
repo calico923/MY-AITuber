@@ -1,76 +1,91 @@
 import { renderHook, act } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useChat } from './useChat'
-import type { ChatMessage } from '@asd-aituber/types'
+import type { ChatMessageResponse, ChatHistoryResponse } from '../lib/api-client'
 
-describe('useChat hook', () => {
-  it('should initialize with empty messages', () => {
+// Mock the ApiClient
+vi.mock('../lib/api-client', () => ({
+  ApiClient: vi.fn().mockImplementation(() => ({
+    sendMessage: vi.fn(),
+    clearChatHistory: vi.fn(),
+    getChatHistory: vi.fn(),
+  })),
+}))
+
+describe('useChat', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.clearAllTimers()
+  })
+
+  it('should initialize with empty messages and ASD mode', () => {
     const { result } = renderHook(() => useChat())
-    
+
     expect(result.current.messages).toEqual([])
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.mode).toBe('ASD')
+  })
+
+  it('should send message with correct state updates', async () => {
+    const { result } = renderHook(() => useChat())
+
+    // Send a message
+    await act(async () => {
+      await result.current.sendMessage('Hello')
+    })
+
+    // Should have user message + error message (since API is mocked and returns undefined)
+    expect(result.current.messages).toHaveLength(2)
+    expect(result.current.messages[0].role).toBe('user')
+    expect(result.current.messages[0].content).toBe('Hello')
+    expect(result.current.messages[0].emotion).toBe('neutral')
+    expect(result.current.messages[1].role).toBe('assistant')
+    expect(result.current.messages[1].content).toBe('エラーが発生しました。もう一度お試しください。')
     expect(result.current.isLoading).toBe(false)
   })
 
-  it('should add user message', () => {
+  it('should change mode correctly', () => {
     const { result } = renderHook(() => useChat())
-    
+
     act(() => {
-      result.current.sendMessage('Hello!')
+      result.current.changeMode('NT')
     })
-    
-    expect(result.current.messages).toHaveLength(1)
-    expect(result.current.messages[0]).toMatchObject({
-      role: 'user',
-      content: 'Hello!',
-      emotion: 'neutral',
-    })
+
+    expect(result.current.mode).toBe('NT')
   })
 
-  it('should set loading state when sending message', () => {
+  it('should add message manually', () => {
     const { result } = renderHook(() => useChat())
-    
-    act(() => {
-      result.current.sendMessage('Test message')
-    })
-    
-    expect(result.current.isLoading).toBe(true)
-  })
 
-  it('should handle assistant response', async () => {
-    const { result } = renderHook(() => useChat())
-    
-    const mockResponse: ChatMessage = {
-      id: '123',
-      role: 'assistant',
-      content: 'Hello! How can I help you?',
+    const testMessage = {
+      id: '1',
+      role: 'assistant' as const,
+      content: 'Test response',
       timestamp: new Date(),
-      emotion: 'joy',
+      emotion: 'joy' as const,
+      internal_emotion: 'joy' as const,
     }
-    
+
     act(() => {
-      result.current.addMessage(mockResponse)
+      result.current.addMessage(testMessage)
     })
-    
+
     expect(result.current.messages).toHaveLength(1)
-    expect(result.current.messages[0]).toEqual(mockResponse)
+    expect(result.current.messages[0]).toEqual(testMessage)
+    expect(result.current.isLoading).toBe(false)
   })
 
-  it('should clear messages', () => {
+  it('should handle emotions correctly in sendMessage', async () => {
     const { result } = renderHook(() => useChat())
-    
-    // Add some messages
-    act(() => {
-      result.current.sendMessage('Message 1')
-      result.current.sendMessage('Message 2')
+
+    await act(async () => {
+      await result.current.sendMessage('Happy message', 'joy')
     })
-    
-    expect(result.current.messages).toHaveLength(2)
-    
-    // Clear messages
-    act(() => {
-      result.current.clearMessages()
-    })
-    
-    expect(result.current.messages).toEqual([])
+
+    expect(result.current.messages[0].emotion).toBe('joy')
+    expect(result.current.messages).toHaveLength(2) // User message + error message
   })
 })
