@@ -56,3 +56,6 @@ yarn-error.log*
 
 # Docker
 *.pid
+
+# Reference repositories (参考用リポジトリ - git管理対象外)
+aituber-kit/
