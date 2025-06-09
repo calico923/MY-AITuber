@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, FormEvent } from 'react'
 import type { ChatMessage } from '@asd-aituber/types'
+import VoiceInput from './VoiceInput'
 
 interface ChatPanelProps {
   messages: ChatMessage[]
@@ -11,6 +12,7 @@ interface ChatPanelProps {
 
 export default function ChatPanel({ messages, onSendMessage, isLoading = false }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState('')
+  const [inputMode, setInputMode] = useState<'text' | 'voice'>('text')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
@@ -33,8 +35,15 @@ export default function ChatPanel({ messages, onSendMessage, isLoading = false }
     }
   }
 
+  const handleVoiceTranscript = (transcript: string) => {
+    if (transcript.trim() && !isLoading) {
+      onSendMessage(transcript.trim())
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
+      {/* メッセージエリア - 固定高さでスクロール */}
       <div className="flex-1 overflow-hidden">
         <div
           ref={messagesContainerRef}
@@ -79,25 +88,68 @@ export default function ChatPanel({ messages, onSendMessage, isLoading = false }
         </div>
       </div>
       
-      <form onSubmit={handleSubmit} className="p-4 border-t">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Type a message..."
-            disabled={isLoading}
-            className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={isLoading || !inputValue.trim()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
+      {/* 入力エリア - 固定位置 */}
+      <div className="shrink-0 bg-white border-t">
+        {/* 入力モード切り替え */}
+        <div className="p-2 border-b">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setInputMode('text')}
+              className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                inputMode === 'text' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              📝 テキスト
+            </button>
+            <button
+              onClick={() => setInputMode('voice')}
+              className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                inputMode === 'voice' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              🎤 音声
+            </button>
+          </div>
         </div>
-      </form>
+
+        {/* テキスト入力 */}
+        {inputMode === 'text' && (
+          <form onSubmit={handleSubmit} className="p-4">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Type a message..."
+                disabled={isLoading}
+                className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !inputValue.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Send
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* 音声入力 */}
+        {inputMode === 'voice' && (
+          <div className="p-4">
+            <VoiceInput
+              onTranscript={handleVoiceTranscript}
+              isDisabled={isLoading}
+              placeholder="マイクボタンを押して話してください..."
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
