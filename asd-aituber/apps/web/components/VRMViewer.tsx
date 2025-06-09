@@ -7,6 +7,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { VRMLoaderPlugin, VRM } from '@pixiv/three-vrm'
 import { VRMAnimationController } from '@/lib/vrm-animation'
 import type { Emotion } from '@asd-aituber/types'
+import type { LipSyncFrame } from '@/lib/lip-sync'
 
 export interface VRMViewerRef {
   setEmotion: (emotion: Emotion) => void
@@ -14,6 +15,7 @@ export interface VRMViewerRef {
   speakText: (text: string, onComplete?: () => void) => void
   stopSpeaking: () => void
   getAvailableExpressions: () => string[]
+  speakWithAudio?: (audio: HTMLAudioElement, frames: LipSyncFrame[]) => void  // 新規追加
 }
 
 interface VRMViewerProps {
@@ -65,7 +67,16 @@ const VRMViewer = forwardRef<VRMViewerRef, VRMViewerProps>(
             animationControllerRef.current.stopSpeaking()
           }
         },
-        getAvailableExpressions: () => availableExpressions
+        getAvailableExpressions: () => availableExpressions,
+        speakWithAudio: (audio: HTMLAudioElement, frames: LipSyncFrame[]) => {
+          console.log('VRMViewer.speakWithAudio called with', frames.length, 'frames')
+          if (animationControllerRef.current) {
+            console.log('Animation controller available, calling speakWithAudio')
+            animationControllerRef.current.speakWithAudio(audio, frames)
+          } else {
+            console.warn('Animation controller not available for speakWithAudio')
+          }
+        }
       }
     }, [availableExpressions])
 
@@ -212,8 +223,8 @@ const VRMViewer = forwardRef<VRMViewerRef, VRMViewerProps>(
             try {
               const aaValue = expressionManager.getValue('aa')
               const happyValue = expressionManager.getValue('happy')
-              if (aaValue > 0 || happyValue > 0) {
-                console.log(`[VRMViewer] Expression values: aa=${aaValue.toFixed(3)}, happy=${happyValue.toFixed(3)}`)
+              if ((aaValue && aaValue > 0) || (happyValue && happyValue > 0)) {
+                console.log(`[VRMViewer] Expression values: aa=${aaValue?.toFixed(3) || 0}, happy=${happyValue?.toFixed(3) || 0}`)
               }
             } catch {
               // Silent fail for non-existent expressions

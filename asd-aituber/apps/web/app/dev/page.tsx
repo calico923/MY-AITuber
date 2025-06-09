@@ -5,9 +5,14 @@
 
 'use client'
 
+import dynamic from 'next/dynamic'
+
+// Dynamic import to disable SSR for voice components
+const VoiceInputDynamic = dynamic(() => import('@/components/VoiceInput'), { ssr: false })
+const VoiceSynthesisDynamic = dynamic(() => import('@/components/VoiceSynthesis'), { ssr: false })
+const VoicevoxSynthesisDynamic = dynamic(() => import('@/components/VoicevoxSynthesis'), { ssr: false })
+
 import { useState } from 'react'
-import VoiceInput from '@/components/VoiceInput'
-import VoiceSynthesis from '@/components/VoiceSynthesis'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
@@ -25,7 +30,7 @@ export default function DevPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 音声入力テスト */}
           <div className="space-y-4">
             <Card>
@@ -36,7 +41,7 @@ export default function DevPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <VoiceInput
+                <VoiceInputDynamic
                   onTranscript={(text) => {
                     setTranscript(text)
                     console.log('音声認識結果:', text)
@@ -66,7 +71,7 @@ export default function DevPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <VoiceSynthesis
+                <VoiceSynthesisDynamic
                   onSpeech={(text) => {
                     setLastSpokenText(text)
                     console.log('音声合成開始:', text)
@@ -84,6 +89,29 @@ export default function DevPage() {
                     <div className="text-green-900">{lastSpokenText}</div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* VOICEVOX音声合成テスト */}
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  🎵 VOICEVOX統合音声合成
+                  <Badge variant="default">VOICEVOX + Web Speech</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <VoicevoxSynthesisDynamic
+                  onSpeech={(text, emotion) => {
+                    setLastSpokenText(`${text} (感情: ${emotion})`)
+                    console.log('VOICEVOX音声合成開始:', text, emotion)
+                  }}
+                  onWordBoundary={(charIndex) => {
+                    console.log('VOICEVOX - 文字境界:', charIndex)
+                  }}
+                />
               </CardContent>
             </Card>
           </div>
@@ -105,7 +133,7 @@ export default function DevPage() {
               
               <div className="flex flex-wrap gap-4">
                 <div className="flex-1 min-w-64">
-                  <VoiceInput
+                  <VoiceInputDynamic
                     onTranscript={(text) => {
                       setTranscript(text)
                       // 音声認識結果を記録（実際のアプリではAI応答になる）
@@ -116,7 +144,7 @@ export default function DevPage() {
                 </div>
                 
                 <div className="flex-1 min-w-64">
-                  <VoiceSynthesis
+                  <VoiceSynthesisDynamic
                     onSpeech={setLastSpokenText}
                   />
                 </div>

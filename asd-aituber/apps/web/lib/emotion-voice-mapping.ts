@@ -36,18 +36,6 @@ export class EmotionVoiceMapper {
       intonation: 1.1   // 少し豊かに
     },
     
-    happy: {
-      speed: 1.08,
-      pitch: 0.03,
-      intonation: 1.15
-    },
-    
-    excited: {
-      speed: 1.1,
-      pitch: 0.04,
-      intonation: 1.2
-    },
-    
     // ネガティブな感情 - 直接的だが控えめ
     sadness: {
       speed: 0.95,      // わずかに遅く
@@ -77,31 +65,6 @@ export class EmotionVoiceMapper {
       speed: 0.95,
       pitch: -0.01,
       intonation: 0.85
-    },
-    
-    // 複合感情
-    confused: {
-      speed: 0.9,
-      pitch: 0.02,
-      intonation: 0.9
-    },
-    
-    anxious: {
-      speed: 1.05,
-      pitch: 0.03,
-      intonation: 0.8
-    },
-    
-    calm: {
-      speed: 0.95,
-      pitch: 0.0,
-      intonation: 1.0
-    },
-    
-    focused: {
-      speed: 1.0,
-      pitch: 0.0,
-      intonation: 1.0
     }
   }
 
@@ -122,18 +85,6 @@ export class EmotionVoiceMapper {
       speed: 1.2,       // 明るく早く
       pitch: 0.08,      // 明るく高く
       intonation: 1.4   // 豊かな表現
-    },
-    
-    happy: {
-      speed: 1.15,
-      pitch: 0.06,
-      intonation: 1.3
-    },
-    
-    excited: {
-      speed: 1.3,
-      pitch: 0.1,
-      intonation: 1.6
     },
     
     // ネガティブな感情 - 感情的な表現
@@ -165,31 +116,6 @@ export class EmotionVoiceMapper {
       speed: 0.9,
       pitch: -0.03,
       intonation: 0.8
-    },
-    
-    // 複合感情
-    confused: {
-      speed: 0.85,
-      pitch: 0.05,
-      intonation: 0.9
-    },
-    
-    anxious: {
-      speed: 1.15,
-      pitch: 0.06,
-      intonation: 0.75
-    },
-    
-    calm: {
-      speed: 0.9,
-      pitch: 0.0,
-      intonation: 1.1
-    },
-    
-    focused: {
-      speed: 1.0,
-      pitch: 0.0,
-      intonation: 1.2
     }
   }
 

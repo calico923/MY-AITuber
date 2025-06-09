@@ -4,7 +4,7 @@
  */
 
 import type { Emotion } from '@asd-aituber/types'
-import { voicevoxClient, type VoicevoxSpeaker, type VoicevoxSynthesisOptions } from './voicevox-client'
+import { voicevoxClient, type VoicevoxSpeaker, type VoicevoxSynthesisOptions, type VoicevoxAudioQuery } from './voicevox-client'
 import { createEmotionalVoiceOptions } from './emotion-voice-mapping'
 import { SpeechSynthesisManager, type SpeechSynthesisOptions, type SpeechSynthesisCallbacks } from './speech-synthesis'
 
@@ -22,6 +22,9 @@ export interface UnifiedVoiceOptions {
   // Common options
   volume?: number
   callbacks?: SpeechSynthesisCallbacks
+  // 新規追加: 音素データとオーディオ要素のコールバック
+  onLipSyncData?: (audioQuery: VoicevoxAudioQuery) => void
+  onAudioReady?: (audio: HTMLAudioElement) => void
 }
 
 export interface VoiceEngineStatus {
@@ -47,6 +50,9 @@ export class UnifiedVoiceSynthesis {
   private currentAudio: HTMLAudioElement | null = null
   private isPlaying: boolean = false
   private callbacks: SpeechSynthesisCallbacks = {}
+  // 新規追加: 音素データとオーディオ要素のコールバック
+  private onLipSyncData?: (audioQuery: VoicevoxAudioQuery) => void
+  private onAudioReady?: (audio: HTMLAudioElement) => void
 
   constructor() {
     this.webSpeechManager = new SpeechSynthesisManager()
@@ -141,7 +147,9 @@ export class UnifiedVoiceSynthesis {
       voice,
       lang = 'ja-JP',
       volume = 1.0,
-      callbacks = {}
+      callbacks = {},
+      onLipSyncData,
+      onAudioReady
     } = options
 
     // 既存の再生を停止
@@ -149,6 +157,8 @@ export class UnifiedVoiceSynthesis {
 
     // コールバックを保存
     this.callbacks = callbacks
+    this.onLipSyncData = onLipSyncData
+    this.onAudioReady = onAudioReady
 
     try {
       const selectedEngine = await this.selectBestEngine(engine)
@@ -193,16 +203,28 @@ export class UnifiedVoiceSynthesis {
         }
       })
 
-      // 音声合成を実行
-      const audioBuffer = await voicevoxClient.synthesize(voiceOptions)
+      // 音声合成を実行（音素データ付き）
+      const result = await voicevoxClient.synthesizeWithTiming(voiceOptions)
+      
+      // 音素データがある場合はコールバックで渡す
+      if (result.audioQuery && this.onLipSyncData) {
+        console.log('📊 Passing audioQuery data to lip sync callback')
+        this.onLipSyncData(result.audioQuery)
+      }
       
       // ArrayBufferをBlobに変換
-      const audioBlob = new Blob([audioBuffer], { type: 'audio/wav' })
+      const audioBlob = new Blob([result.audioBuffer], { type: 'audio/wav' })
       const audioUrl = URL.createObjectURL(audioBlob)
 
       // HTMLAudioElementで再生
       this.currentAudio = new Audio(audioUrl)
       this.currentAudio.volume = volume
+
+      // HTMLAudioElementをコールバックで提供
+      if (this.onAudioReady) {
+        console.log('🎧 Passing HTMLAudioElement to callback')
+        this.onAudioReady(this.currentAudio)
+      }
 
       this.currentAudio.onended = () => {
         this.isPlaying = false
@@ -376,7 +398,7 @@ export class UnifiedVoiceSynthesis {
 /**
  * デフォルトの統合音声合成インスタンス
  */
-export const unifiedVoiceSynthesis = new UnifiedVoiceSynthesis()
+export const unifiedVoiceSynthesis = typeof window !== 'undefined' ? new UnifiedVoiceSynthesis() : null
 
 /**
  * 便利関数：感情を込めた音声合成
@@ -387,6 +409,10 @@ export async function speakWithEmotion(
   mode: 'asd' | 'nt' = 'nt',
   engine: VoiceEngine = 'auto'
 ): Promise<boolean> {
+  if (!unifiedVoiceSynthesis) {
+    console.warn('Voice synthesis not available on server side')
+    return false
+  }
   return await unifiedVoiceSynthesis.speak({
     text,
     emotion,

@@ -3,13 +3,54 @@
  * 日本語音声認識のためのWeb Speech APIラッパー
  */
 
+// Web Speech API型定義
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any
+    SpeechRecognition: any
+  }
+}
+
+interface SpeechRecognition extends EventTarget {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  maxAlternatives: number
+  serviceURI: string
+  grammars: any
+  start(): void
+  stop(): void
+  abort(): void
+  onaudiostart: ((this: SpeechRecognition, ev: Event) => any) | null
+  onaudioend: ((this: SpeechRecognition, ev: Event) => any) | null
+  onend: ((this: SpeechRecognition, ev: Event) => any) | null
+  onerror: ((this: SpeechRecognition, ev: any) => any) | null
+  onnomatch: ((this: SpeechRecognition, ev: any) => any) | null
+  onresult: ((this: SpeechRecognition, ev: any) => any) | null
+  onsoundstart: ((this: SpeechRecognition, ev: Event) => any) | null
+  onsoundend: ((this: SpeechRecognition, ev: Event) => any) | null
+  onspeechstart: ((this: SpeechRecognition, ev: Event) => any) | null
+  onspeechend: ((this: SpeechRecognition, ev: Event) => any) | null
+  onstart: ((this: SpeechRecognition, ev: Event) => any) | null
+}
+
+interface SpeechRecognitionEvent extends Event {
+  results: any
+  resultIndex: number
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: string
+  message?: string
+}
+
 export interface SpeechRecognitionOptions {
   language?: string
   continuous?: boolean
   interimResults?: boolean
   maxAlternatives?: number
   serviceURI?: string
-  grammars?: SpeechGrammarList
+  grammars?: any
 }
 
 export interface SpeechRecognitionResult {
@@ -54,9 +95,9 @@ export class SpeechRecognitionManager {
    */
   private initializeSpeechRecognition(): void {
     // ブラウザ対応チェック
-    const SpeechRecognition = 
-      (window as any).SpeechRecognition || 
-      (window as any).webkitSpeechRecognition
+    const SpeechRecognition = typeof window !== 'undefined' ?
+      ((window as any).SpeechRecognition || 
+       (window as any).webkitSpeechRecognition) : null
 
     if (!SpeechRecognition) {
       console.warn('Web Speech API is not supported in this browser')
@@ -118,8 +159,8 @@ export class SpeechRecognitionManager {
     }
 
     this.recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const results = Array.from(event.results)
-      const latestResult = results[results.length - 1]
+      const results = Array.from(event.results as any)
+      const latestResult = results[results.length - 1] as any
       
       if (latestResult) {
         const transcript = latestResult[0].transcript
@@ -155,14 +196,14 @@ export class SpeechRecognitionManager {
           console.error('🚨 Network error - Auto-retry DISABLED to prevent infinite loop:', {
             error: event.error,
             message: event.message,
-            userAgent: navigator.userAgent,
-            onLine: navigator.onLine,
-            connection: (navigator as any).connection,
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A',
+            onLine: typeof navigator !== 'undefined' ? navigator.onLine : false,
+            connection: typeof navigator !== 'undefined' ? (navigator as any).connection : null,
             errorCount: this.networkErrorCount,
             isListening: this.isListening,
-            protocol: location.protocol,
-            hostname: location.hostname,
-            isHTTPS: location.protocol === 'https:' || location.hostname === 'localhost'
+            protocol: typeof location !== 'undefined' ? location.protocol : 'N/A',
+            hostname: typeof location !== 'undefined' ? location.hostname : 'N/A',
+            isHTTPS: typeof location !== 'undefined' ? (location.protocol === 'https:' || location.hostname === 'localhost') : false
           })
           
           // 自動再試行を完全に無効化して無限ループを防止

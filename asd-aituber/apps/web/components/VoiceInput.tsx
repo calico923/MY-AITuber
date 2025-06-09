@@ -21,7 +21,7 @@ export default function VoiceInput({
   const [isActive, setIsActive] = useState(false)
   const [currentTranscript, setCurrentTranscript] = useState('')
   const [showPermissionRequest, setShowPermissionRequest] = useState(false)
-  const [networkStatus, setNetworkStatus] = useState(navigator.onLine)
+  const [networkStatus, setNetworkStatus] = useState(typeof navigator !== 'undefined' ? navigator.onLine : false)
   const [showDiagnostic, setShowDiagnostic] = useState(false)
 
   const {
@@ -65,6 +65,8 @@ export default function VoiceInput({
 
   // ネットワーク状態の監視
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    
     const handleOnline = () => setNetworkStatus(true)
     const handleOffline = () => setNetworkStatus(false)
     

@@ -19,8 +19,22 @@ export interface VoicevoxSynthesisOptions {
   text: string
 }
 
+// 詳細な音素データ型定義
+export interface VoicevoxMora {
+  text: string
+  vowel: string
+  vowel_length: number
+  pitch: number
+}
+
+export interface VoicevoxAccentPhrase {
+  moras: VoicevoxMora[]
+  accent: number
+  pause_mora?: VoicevoxMora
+}
+
 export interface VoicevoxAudioQuery {
-  accent_phrases: any[]
+  accent_phrases: VoicevoxAccentPhrase[]
   speedScale: number
   pitchScale: number
   intonationScale: number
@@ -32,14 +46,15 @@ export interface VoicevoxAudioQuery {
   kana: string
 }
 
-export interface SynthesisResult {
-  audioBuffer: ArrayBuffer
-  audioQuery: VoicevoxAudioQuery
-}
-
 export interface VoicevoxError {
   error: string
   details?: any
+}
+
+// 音声合成結果の型定義
+export interface SynthesisResult {
+  audioBuffer: ArrayBuffer
+  audioQuery: VoicevoxAudioQuery | null
 }
 
 /**
@@ -138,9 +153,11 @@ export class VoicevoxClient {
   }
 
   /**
-   * 音声合成を実行
+   * 音声合成を実行（音素データ付き）
+   * @param options - 音声合成オプション
+   * @returns 音声データと音素データ
    */
-  async synthesize(options: VoicevoxSynthesisOptions): Promise<SynthesisResult> {
+  private async synthesizeWithPhonemes(options: VoicevoxSynthesisOptions): Promise<SynthesisResult> {
     if (!this.isAvailable) {
       throw new Error('VOICEVOX server is not available')
     }
@@ -167,28 +184,73 @@ export class VoicevoxClient {
         throw new Error(`VOICEVOX synthesis failed: ${errorData.error || response.statusText}`)
       }
 
-      const formData = await response.formData()
-      const audioQueryBlob = formData.get('audioQuery') as Blob | null
-      const audioBlob = formData.get('audio') as Blob | null
+      // multipartレスポンスのパースを試行
+      try {
+        const formData = await response.formData()
+        
+        // audioQueryデータ（JSON）を取得
+        const audioQueryData = formData.get('audioQuery')
+        let audioQuery: VoicevoxAudioQuery | null = null
+        
+        if (audioQueryData && typeof audioQueryData === 'string') {
+          try {
+            audioQuery = JSON.parse(audioQueryData) as VoicevoxAudioQuery
+            console.log('📊 VOICEVOX audioQuery data retrieved successfully')
+          } catch (parseError) {
+            console.warn('Failed to parse audioQuery JSON:', parseError)
+          }
+        }
+        
+        // 音声データ（Blob）を取得
+        const audioBlob = formData.get('audio') as Blob
+        if (!audioBlob) {
+          throw new Error('No audio data in multipart response')
+        }
+        
+        const arrayBuffer = await audioBlob.arrayBuffer()
+        
+        if (arrayBuffer.byteLength === 0) {
+          throw new Error('Received empty audio data from VOICEVOX')
+        }
 
-      if (!audioQueryBlob || !audioBlob) {
-        throw new Error('Invalid multipart response from synthesis API')
+        console.log(`🎵 VOICEVOX synthesis successful: ${arrayBuffer.byteLength} bytes with phoneme data`)
+        return { audioBuffer: arrayBuffer, audioQuery }
+        
+      } catch (multipartError) {
+        console.warn('Multipart parse failed, falling back to audio only:', multipartError)
+        
+        // フォールバック：音声データのみを取得
+        const arrayBuffer = await response.arrayBuffer()
+        
+        if (arrayBuffer.byteLength === 0) {
+          throw new Error('Received empty audio data from VOICEVOX')
+        }
+
+        console.log(`🎵 VOICEVOX synthesis successful (audio only): ${arrayBuffer.byteLength} bytes`)
+        return { audioBuffer: arrayBuffer, audioQuery: null }
       }
-
-      const audioQuery: VoicevoxAudioQuery = JSON.parse(await audioQueryBlob.text())
-      const audioBuffer = await audioBlob.arrayBuffer()
-
-      if (audioBuffer.byteLength === 0) {
-        throw new Error('Received empty audio data from VOICEVOX')
-      }
-
-      console.log(`🎵 VOICEVOX synthesis successful: ${audioBuffer.byteLength} bytes, with audioQuery.`)
-      return { audioBuffer, audioQuery }
-
+      
     } catch (error) {
       console.error('VOICEVOX synthesis error:', error)
       throw error
     }
+  }
+
+  /**
+   * 音声合成を実行（既存API互換）
+   */
+  async synthesize(options: VoicevoxSynthesisOptions): Promise<ArrayBuffer> {
+    const result = await this.synthesizeWithPhonemes(options)
+    return result.audioBuffer
+  }
+
+  /**
+   * 音声合成を実行（音素データ付き）
+   * @param options - 音声合成オプション
+   * @returns 音声データと音素データの両方
+   */
+  async synthesizeWithTiming(options: VoicevoxSynthesisOptions): Promise<SynthesisResult> {
+    return this.synthesizeWithPhonemes(options)
   }
 
   /**

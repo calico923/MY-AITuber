@@ -42,6 +42,8 @@ export interface UseSpeechRecognitionReturn {
     isSupported: boolean
     browserName: string
     recommendedMessage?: string
+    securityWarning?: string
+    troubleshooting?: string[]
   }
 }
 

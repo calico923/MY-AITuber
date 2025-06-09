@@ -12,7 +12,7 @@ import {
   type UnifiedVoiceOptions,
   type VoiceEngineStatus
 } from '@/lib/unified-voice-synthesis'
-import { type VoicevoxSpeaker } from '@/lib/voicevox-client'
+import { type VoicevoxSpeaker, type VoicevoxAudioQuery } from '@/lib/voicevox-client'
 import { type SpeechSynthesisCallbacks } from '@/lib/speech-synthesis'
 
 export interface UseUnifiedVoiceSynthesisOptions {
@@ -22,6 +22,9 @@ export interface UseUnifiedVoiceSynthesisOptions {
   defaultMode?: 'asd' | 'nt'
   volume?: number
   callbacks?: SpeechSynthesisCallbacks
+  // Phase 4: 音素データとオーディオ要素のコールバック
+  onLipSyncData?: (audioQuery: VoicevoxAudioQuery) => void
+  onAudioReady?: (audio: HTMLAudioElement) => void
 }
 
 export interface UseUnifiedVoiceSynthesisReturn {
@@ -73,7 +76,9 @@ export function useUnifiedVoiceSynthesis(
     defaultEmotion = 'neutral',
     defaultMode = 'nt',
     volume: initialVolume = 1.0,
-    callbacks: externalCallbacks = {}
+    callbacks: externalCallbacks = {},
+    onLipSyncData,
+    onAudioReady
   } = options
 
   // 状態管理
@@ -97,10 +102,19 @@ export function useUnifiedVoiceSynthesis(
   const [mode, setMode] = useState<'asd' | 'nt'>(defaultMode)
 
   const isMountedRef = useRef(true)
-  const synthesizerRef = useRef<UnifiedVoiceSynthesis>(unifiedVoiceSynthesis)
+  const synthesizerRef = useRef<UnifiedVoiceSynthesis | null>(unifiedVoiceSynthesis)
 
   // 初期化
   useEffect(() => {
+    if (!synthesizerRef.current) {
+      // クライアントサイドで初期化
+      if (typeof window !== 'undefined') {
+        synthesizerRef.current = new UnifiedVoiceSynthesis()
+      } else {
+        return
+      }
+    }
+
     const initializeEngines = async () => {
       setIsLoading(true)
       try {
@@ -117,7 +131,7 @@ export function useUnifiedVoiceSynthesis(
 
     return () => {
       isMountedRef.current = false
-      synthesizerRef.current.destroy()
+      synthesizerRef.current?.destroy()
     }
   }, [])
 
@@ -160,6 +174,7 @@ export function useUnifiedVoiceSynthesis(
   // エンジン状態の更新
   const refreshEngines = useCallback(async () => {
     try {
+      if (!synthesizerRef.current) return
       const status = await synthesizerRef.current.getEngineStatus()
       
       if (isMountedRef.current) {
@@ -230,10 +245,17 @@ export function useUnifiedVoiceSynthesis(
         onBoundary: externalCallbacks.onBoundary,
         onWord: externalCallbacks.onWord
       },
+      // Phase 4: 音素データとオーディオ要素のコールバックを追加
+      onLipSyncData,
+      onAudioReady,
       ...overrideOptions
     }
 
     try {
+      if (!synthesizerRef.current) {
+        setError('Voice synthesis not available')
+        return false
+      }
       return await synthesizerRef.current.speak(options)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Voice synthesis failed'
@@ -252,24 +274,24 @@ export function useUnifiedVoiceSynthesis(
 
   // 停止
   const stop = useCallback(() => {
-    synthesizerRef.current.stop()
+    synthesizerRef.current?.stop()
     setIsSpeaking(false)
   }, [])
 
   // 一時停止
   const pause = useCallback(() => {
-    synthesizerRef.current.pause()
+    synthesizerRef.current?.pause()
   }, [])
 
   // 再開
   const resume = useCallback(() => {
-    synthesizerRef.current.resume()
+    synthesizerRef.current?.resume()
   }, [])
 
   // 優先エンジンの設定
   const setPreferredEngine = useCallback((engine: VoiceEngine) => {
     setCurrentEngine(engine)
-    synthesizerRef.current.setPreferredEngine(engine)
+    synthesizerRef.current?.setPreferredEngine(engine)
   }, [])
 
   // 音声テスト

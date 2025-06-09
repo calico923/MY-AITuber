@@ -16,12 +16,12 @@ export default function ChatPage() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [mounted, setMounted] = useState(false)
   
-  // 音声合成機能（VOICEVOX統合）
+  
+  // 音声合成機能（シンプル版）
   const { speak: speakText, stop: stopSpeech, isSpeaking: isVoiceSpeaking, currentEngine } = useSimpleUnifiedVoice({
     preferredEngine: 'auto', // VOICEVOXが利用可能なら自動選択
-    defaultMode: mode === 'asd' ? 'asd' : 'nt', // チャットモードと連動
-    volume: 0.8,
-    callbacks: {} // コールバックは speak 時に個別に設定
+    defaultMode: mode === 'ASD' ? 'asd' : 'nt', // チャットモードと連動
+    volume: 0.8
   })
   
   // クライアントサイドでのみマウント
@@ -46,53 +46,37 @@ export default function ChatPage() {
         setCurrentEmotion(lastMessage.emotion)
       }
       
-      // 音声合成とリップシンク
+      // 音声合成とリップシンク（シンプル版に戻す）
       const speakWithLipSync = async () => {
-        console.log('[ChatPage] Starting speakWithLipSync')
-        console.log('[ChatPage] Message content:', lastMessage.content)
-        console.log('[ChatPage] Current engine:', currentEngine)
+        console.log('[ChatPage] Starting simple speakWithLipSync')
         
         // 既存の音声を停止
         stopSpeech()
         
         // VRMリップシンクを開始
         if (vrmViewerRef.current) {
-          console.log('[ChatPage] VRMViewer is available')
           setIsSpeaking(true)
           
-          // 先にリップシンクを開始
-          console.log('[ChatPage] Starting VRM lip sync first')
-          if (vrmViewerRef.current.speakText) {
-            vrmViewerRef.current.speakText(lastMessage.content, () => {
-              console.log('[ChatPage] VRM lip sync completed')
-            })
-          }
-          
-          // 音声合成で話す（感情とモードを考慮）
-          console.log('[ChatPage] Starting voice synthesis with options:', {
-            emotion: lastMessage.emotion || 'neutral',
-            mode: mode === 'asd' ? 'asd' : 'nt'
+          // シンプルなテキストベースのリップシンクを開始
+          vrmViewerRef.current.speakText(lastMessage.content, () => {
+            console.log('[ChatPage] Lip sync completed')
+            setIsSpeaking(false)
+            // 話し終わったら3秒後に表情をneutralに戻す
+            setTimeout(() => {
+              if (vrmViewerRef.current) {
+                vrmViewerRef.current.setEmotion('neutral')
+                setCurrentEmotion('neutral')
+              }
+            }, 3000)
           })
           
+          // 音声合成を並行して実行
           await speakText(lastMessage.content, {
             emotion: lastMessage.emotion || 'neutral',
-            mode: mode === 'asd' ? 'asd' : 'nt',
+            mode: mode === 'ASD' ? 'asd' : 'nt',
             callbacks: {
-              onStart: () => {
-                console.log('[ChatPage] Voice synthesis started callback triggered')
-              },
               onEnd: () => {
-                console.log('[ChatPage] Voice synthesis ended callback triggered')
-                console.log('[ChatPage] ===== 音声会話完了 =====')
-                setIsSpeaking(false)
-                // 話し終わったら3秒後に表情をneutralに戻す
-                setTimeout(() => {
-                  if (vrmViewerRef.current) {
-                    console.log('[ChatPage] Resetting emotion to neutral')
-                    vrmViewerRef.current.setEmotion('neutral')
-                    setCurrentEmotion('neutral')
-                  }
-                }, 3000)
+                console.log('[ChatPage] Voice synthesis ended')
               },
               onError: (error) => {
                 console.error('[ChatPage] Speech synthesis error:', error)
@@ -105,7 +89,7 @@ export default function ChatPage() {
           // VRMViewerが利用できない場合は音声のみ再生
           await speakText(lastMessage.content, {
             emotion: lastMessage.emotion || 'neutral',
-            mode: mode === 'asd' ? 'asd' : 'nt',
+            mode: mode === 'ASD' ? 'asd' : 'nt',
             callbacks: {
               onStart: () => {
                 console.log('[ChatPage] Voice-only: synthesis started')
@@ -133,6 +117,7 @@ export default function ChatPage() {
       console.log('[ChatPage] Not an assistant message, skipping voice synthesis')
     }
   }, [messages])
+
 
   // ローディング状態に基づいて表情を更新
   useEffect(() => {

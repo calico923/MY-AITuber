@@ -3,6 +3,8 @@
  * テキストベースの音韻解析と口の動きの同期
  */
 
+import type { VoicevoxAudioQuery } from './voicevox-client'
+
 export interface LipSyncOptions {
   speed: number        // 話す速度（文字/秒）
   intensity: number    // 口の動きの強度
@@ -15,11 +17,111 @@ export interface PhonemeData {
   intensity: number    // 強度（0-1）
 }
 
+// 新規追加: VOICEVOX音素データ用のフレーム型定義
+export interface LipSyncFrame {
+  time: number      // 開始時刻（ms）
+  duration: number  // 持続時間（ms）
+  vowel: string     // 母音（a, i, u, e, o）
+  intensity: number // 強度（0-1）
+}
+
 export class LipSync {
   private isPlaying = false
   private animationId: number | null = null
   private onPhonemeChange: ((phoneme: string, intensity: number) => void) | null = null
   private onComplete: (() => void) | null = null
+
+  /**
+   * VOICEVOXの音素データからリップシンクフレームを生成
+   */
+  static createFramesFromVoicevox(audioQuery: VoicevoxAudioQuery): LipSyncFrame[] {
+    const frames: LipSyncFrame[] = []
+    let currentTime = 0
+
+    console.log('[LipSync] Creating frames from VOICEVOX audioQuery:', {
+      accent_phrases: audioQuery.accent_phrases.length,
+      speedScale: audioQuery.speedScale,
+      prePhonemeLength: audioQuery.prePhonemeLength,
+      postPhonemeLength: audioQuery.postPhonemeLength
+    })
+
+    // 前のポーズ時間を追加
+    if (audioQuery.prePhonemeLength > 0) {
+      const prePhoneDuration = (audioQuery.prePhonemeLength * 1000) / audioQuery.speedScale
+      frames.push({
+        time: currentTime,
+        duration: prePhoneDuration,
+        vowel: 'silence',
+        intensity: 0
+      })
+      console.log(`[LipSync] Pre-phoneme silence: time=${currentTime.toFixed(1)}ms, duration=${prePhoneDuration.toFixed(1)}ms`)
+      currentTime += prePhoneDuration
+    }
+
+    for (const phrase of audioQuery.accent_phrases) {
+      console.log('[LipSync] Processing accent phrase with', phrase.moras.length, 'moras')
+      
+      for (const mora of phrase.moras) {
+        // 母音の時間を計算（speedScaleで調整）
+        const duration = (mora.vowel_length * 1000) / audioQuery.speedScale
+        
+        // 母音マッピング（VRM標準から従来の母音へ）
+        const vowelMap: { [key: string]: string } = {
+          'a': 'a',
+          'i': 'i', 
+          'u': 'u',
+          'e': 'e',
+          'o': 'o',
+          'N': 'u', // 撥音はu音で代用
+          'cl': 'silence', // 無声子音は無音
+          'pau': 'silence' // ポーズは無音
+        }
+        
+        const vowel = vowelMap[mora.vowel] || 'a'
+        const intensity = vowel === 'silence' ? 0 : 0.7
+        
+        frames.push({
+          time: currentTime,
+          duration: duration,
+          vowel: vowel,
+          intensity: intensity
+        })
+        
+        console.log(`[LipSync] Frame: time=${currentTime.toFixed(1)}ms, duration=${duration.toFixed(1)}ms, vowel=${vowel}, text=${mora.text}`)
+        currentTime += duration
+      }
+      
+      // アクセント句間の休止
+      if (phrase.pause_mora) {
+        const pauseDuration = (phrase.pause_mora.vowel_length * 1000) / audioQuery.speedScale
+        frames.push({
+          time: currentTime,
+          duration: pauseDuration,
+          vowel: 'silence',
+          intensity: 0
+        })
+        
+        console.log(`[LipSync] Pause frame: time=${currentTime.toFixed(1)}ms, duration=${pauseDuration.toFixed(1)}ms`)
+        currentTime += pauseDuration
+      }
+    }
+    
+    // 後のポーズ時間を追加
+    if (audioQuery.postPhonemeLength > 0) {
+      const postPhoneDuration = (audioQuery.postPhonemeLength * 1000) / audioQuery.speedScale
+      frames.push({
+        time: currentTime,
+        duration: postPhoneDuration,
+        vowel: 'silence',
+        intensity: 0
+      })
+      console.log(`[LipSync] Post-phoneme silence: time=${currentTime.toFixed(1)}ms, duration=${postPhoneDuration.toFixed(1)}ms`)
+      currentTime += postPhoneDuration
+    }
+    
+    console.log(`[LipSync] Generated ${frames.length} frames, total duration: ${currentTime.toFixed(1)}ms`)
+    return frames
+  }
 
   /**
    * テキストから音韻データを生成

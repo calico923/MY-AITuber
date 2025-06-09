@@ -40,7 +40,7 @@ export class SpeechSynthesisManager {
   private voicesLoaded: boolean = false
 
   constructor(options: SpeechSynthesisOptions = {}) {
-    this.synthesis = window.speechSynthesis
+    this.synthesis = typeof window !== 'undefined' ? window.speechSynthesis : null as any
     this.isSupported = !!this.synthesis
     
     this.options = {
@@ -88,7 +88,7 @@ export class SpeechSynthesisManager {
         voice,
         isJapanese: true,
         quality: this.evaluateVoiceQuality(voice),
-        type: voice.localService ? 'local' : 'remote'
+        type: (voice.localService ? 'local' : 'remote') as 'local' | 'remote'
       }))
       .sort((a, b) => {
         // 品質の高い順にソート

@@ -1,6 +1,6 @@
 import { VRM } from '@pixiv/three-vrm'
 import type { Emotion } from '@asd-aituber/types'
-import { LipSync } from './lip-sync'
+import { LipSync, type LipSyncFrame } from './lip-sync'
 
 /**
  * VRMアニメーションコントローラー
@@ -424,6 +424,7 @@ export class VRMAnimationController {
   
   private vowelExpressionInfo?: { type: 'standard' | 'legacy' | 'none', available: string[] }
   private alternativeLogShown?: boolean
+  private lastFrameWarningShown?: boolean
   
   /**
    * 口の表情の存在を確認（VRM標準表情優先）
@@ -646,6 +647,140 @@ export class VRMAnimationController {
     this.lipSync.stop()
     this.isSpeaking = false
     this.setMouthShape('silence', 0)
+  }
+
+  /**
+   * 音声同期リップシンクメソッド（Phase 3新機能）
+   * @param audio - HTMLAudioElement（音声ファイル）
+   * @param frames - LipSyncFrame配列（音素タイミングデータ）
+   */
+  speakWithAudio(audio: HTMLAudioElement, frames: LipSyncFrame[]): void {
+    console.log('[VRMAnimationController] speakWithAudio called with', frames.length, 'frames')
+    
+    // 既存のリップシンクを停止
+    this.stopSpeaking()
+    this.isSpeaking = true
+    
+    let animationId: number | null = null
+    
+    // 音声のメタデータが読み込まれてから処理（より確実な同期）
+    const startSync = () => {
+      audio.removeEventListener('loadedmetadata', startSync)
+      
+      // 音声の長さとフレームの長さを比較
+      const audioDuration = audio.duration * 1000 // ms
+      const framesDuration = frames.length > 0 ? frames[frames.length - 1].time + frames[frames.length - 1].duration : 0
+      
+      console.log('[VRMAnimationController] Audio metadata loaded, starting sync')
+      console.log(`[VRMAnimationController] Audio duration: ${audioDuration.toFixed(1)}ms`)
+      console.log(`[VRMAnimationController] Frames duration: ${framesDuration.toFixed(1)}ms`)
+      console.log(`[VRMAnimationController] Duration difference: ${(audioDuration - framesDuration).toFixed(1)}ms`)
+      
+      // フレームが音声より短い場合、最後のフレームを延長
+      let adjustedFrames = [...frames]
+      if (framesDuration < audioDuration && adjustedFrames.length > 0) {
+        const lastFrame = adjustedFrames[adjustedFrames.length - 1]
+        const extensionNeeded = audioDuration - framesDuration
+        console.log(`[VRMAnimationController] Extending last frame by ${extensionNeeded.toFixed(1)}ms`)
+        
+        adjustedFrames[adjustedFrames.length - 1] = {
+          ...lastFrame,
+          duration: lastFrame.duration + extensionNeeded
+        }
+      }
+      
+      // 音声再生と同時にアニメーション開始
+      const onPlay = () => {
+        audio.removeEventListener('play', onPlay)
+        console.log('[VRMAnimationController] Audio playback started, beginning lip sync animation')
+        
+        const animate = () => {
+          if (!this.isSpeaking || audio.paused || audio.ended) {
+            console.log('[VRMAnimationController] Animation stopped - speaking:', this.isSpeaking, 'paused:', audio.paused, 'ended:', audio.ended)
+            this.stopSpeaking()
+            return
+          }
+          
+          const currentTime = audio.currentTime * 1000 // ms変換
+          
+          // 現在の時刻に対応するフレームを検索（調整されたフレームを使用）
+          const currentFrame = adjustedFrames.find(frame => 
+            currentTime >= frame.time && 
+            currentTime < frame.time + frame.duration
+          )
+          
+          // 1秒ごとに詳細ログを出力
+          if (Math.floor(currentTime / 1000) !== Math.floor((currentTime - 16) / 1000)) {
+            const progress = ((currentTime / audioDuration) * 100).toFixed(1)
+            console.log(`[VRMAnimationController] Progress: ${progress}% (${currentTime.toFixed(1)}ms / ${audioDuration.toFixed(1)}ms)`)
+            if (currentFrame) {
+              console.log(`[VRMAnimationController] Current frame: ${currentFrame.vowel} (${currentFrame.time.toFixed(1)}-${(currentFrame.time + currentFrame.duration).toFixed(1)}ms)`)
+            } else {
+              console.log(`[VRMAnimationController] No frame at ${currentTime.toFixed(1)}ms`)
+            }
+          }
+          
+          if (currentFrame) {
+            this.setMouthShape(currentFrame.vowel, currentFrame.intensity)
+          } else {
+            // フレームが見つからない場合、音声が再生中なら最後のフレームの母音を継続
+            if (currentTime < audioDuration && adjustedFrames.length > 0) {
+              const lastFrame = adjustedFrames[adjustedFrames.length - 1]
+              // 最初の警告時のみログ出力
+              if (!this.lastFrameWarningShown) {
+                console.log(`[VRMAnimationController] No frame found at ${currentTime.toFixed(1)}ms, using last frame vowel: ${lastFrame.vowel}`)
+                this.lastFrameWarningShown = true
+              }
+              this.setMouthShape(lastFrame.vowel, lastFrame.intensity * 0.7) // 少し弱めに
+            } else {
+              this.setMouthShape('silence', 0)
+            }
+          }
+          
+          animationId = requestAnimationFrame(animate)
+        }
+        
+        animate()
+      }
+      
+      audio.addEventListener('play', onPlay, { once: true })
+      
+      // 音声を再生
+      audio.play().catch(error => {
+        console.error('[VRMAnimationController] Audio play failed:', error)
+        this.stopSpeaking()
+      })
+    }
+    
+    // メタデータが既に読み込まれている場合は即座に開始
+    if (audio.readyState >= 1) {
+      console.log('[VRMAnimationController] Audio metadata already loaded')
+      startSync()
+    } else {
+      console.log('[VRMAnimationController] Waiting for audio metadata to load')
+      audio.addEventListener('loadedmetadata', startSync, { once: true })
+    }
+    
+    // 音声終了時のクリーンアップ
+    const onEnded = () => {
+      console.log('[VRMAnimationController] Audio ended, cleaning up')
+      if (animationId) cancelAnimationFrame(animationId)
+      this.stopSpeaking()
+      audio.removeEventListener('ended', onEnded)
+      audio.removeEventListener('error', onError)
+    }
+    
+    // エラーハンドリング
+    const onError = (e: Event) => {
+      console.error('[VRMAnimationController] Audio error:', e)
+      if (animationId) cancelAnimationFrame(animationId)
+      this.stopSpeaking()
+      audio.removeEventListener('ended', onEnded)
+      audio.removeEventListener('error', onError)
+    }
+    
+    audio.addEventListener('ended', onEnded, { once: true })
+    audio.addEventListener('error', onError, { once: true })
   }
 
   /**
