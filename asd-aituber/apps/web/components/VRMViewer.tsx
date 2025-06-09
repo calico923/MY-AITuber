@@ -14,6 +14,7 @@ export interface VRMViewerRef {
   setSpeaking: (intensity: number) => void
   speakText: (text: string, onComplete?: () => void) => void
   stopSpeaking: () => void
+  forceStopSpeaking?: () => void  // Priority 3: 強制停止機能
   getAvailableExpressions: () => string[]
   speakWithAudio?: (audio: HTMLAudioElement, frames: LipSyncFrame[]) => void  // 新規追加
 }
@@ -65,6 +66,15 @@ const VRMViewer = forwardRef<VRMViewerRef, VRMViewerProps>(
         stopSpeaking: () => {
           if (animationControllerRef.current) {
             animationControllerRef.current.stopSpeaking()
+          }
+        },
+        forceStopSpeaking: () => {
+          console.log('VRMViewer.forceStopSpeaking called')
+          if (animationControllerRef.current) {
+            console.log('Animation controller available, calling forceStopSpeaking')
+            animationControllerRef.current.forceStopSpeaking()
+          } else {
+            console.warn('Animation controller not available for forceStopSpeaking')
           }
         },
         getAvailableExpressions: () => availableExpressions,

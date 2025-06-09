@@ -12,8 +12,10 @@ export class VRMAnimationController {
   private isBlinking: boolean = false
   private nextBlinkTime: number = 0
   private currentEmotion: Emotion = 'neutral'
+  private lastAppliedEmotion: Emotion | null = null
   private lipSync: LipSync
   private isSpeaking: boolean = false
+  private animationId: number | null = null
   
   // アニメーション設定
   private readonly blinkInterval = { min: 1000, max: 5000 } // ms
@@ -118,14 +120,18 @@ export class VRMAnimationController {
   }
 
   /**
-   * 感情表現の更新
+   * 感情表現の更新（感情が変更された時のみ）
    */
   private updateEmotion(): void {
     const expressionManager = this.vrm.expressionManager
     if (!expressionManager) return
 
-    // 現在の感情に基づいて表情を設定
-    this.applyEmotionExpression(this.currentEmotion)
+    // 感情が変更された場合のみ処理
+    if (this.currentEmotion !== this.lastAppliedEmotion) {
+      console.log(`[VRMAnimationController] Emotion changed: ${this.lastAppliedEmotion} → ${this.currentEmotion}`)
+      this.applyEmotionExpression(this.currentEmotion)
+      this.lastAppliedEmotion = this.currentEmotion
+    }
   }
 
   /**
@@ -243,7 +249,10 @@ export class VRMAnimationController {
    * @param emotion - 設定する感情
    */
   setEmotion(emotion: Emotion): void {
-    this.currentEmotion = emotion
+    if (this.currentEmotion !== emotion) {
+      console.log(`[VRMAnimationController] setEmotion called: ${this.currentEmotion} → ${emotion}`)
+      this.currentEmotion = emotion
+    }
   }
 
   /**
@@ -305,7 +314,8 @@ export class VRMAnimationController {
 
     try {
       if (expressionManager.getExpressionTrackName(expressionName)) {
-        console.log(`[VRMAnimationController] Setting expression: ${expressionName} = ${value.toFixed(2)}`)
+        // ログを削減: デバッグ時のみ表示
+        // console.log(`[VRMAnimationController] Setting expression: ${expressionName} = ${value.toFixed(2)}`)
         expressionManager.setValue(expressionName, value)
       } else {
         console.warn(`[VRMAnimationController] Expression '${expressionName}' not available`)
@@ -647,6 +657,36 @@ export class VRMAnimationController {
     this.lipSync.stop()
     this.isSpeaking = false
     this.setMouthShape('silence', 0)
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId)
+      this.animationId = null
+    }
+  }
+
+  /**
+   * リップシンクを強制停止（Priority 3: 強制停止機能）
+   * すべてのアニメーション関連のタイマーとエラー状態をリセットする
+   */
+  forceStopSpeaking(): void {
+    console.log('[VRMAnimationController] Force stopping all speaking animations')
+    
+    // 基本の停止処理
+    this.isSpeaking = false
+    this.lipSync.stop()
+    
+    // アニメーションフレームのキャンセル
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId)
+      this.animationId = null
+    }
+    
+    // 口の形状をリセット
+    this.setMouthShape('silence', 0)
+    
+    // エラー状態のリセット（将来の拡張に備える）
+    // アニメーション関連のタイマーもクリア（必要に応じて追加）
+    
+    console.log('[VRMAnimationController] Force stop completed')
   }
 
   /**
@@ -660,8 +700,6 @@ export class VRMAnimationController {
     // 既存のリップシンクを停止
     this.stopSpeaking()
     this.isSpeaking = true
-    
-    let animationId: number | null = null
     
     // 音声のメタデータが読み込まれてから処理（より確実な同期）
     const startSync = () => {
@@ -737,7 +775,7 @@ export class VRMAnimationController {
             }
           }
           
-          animationId = requestAnimationFrame(animate)
+          this.animationId = requestAnimationFrame(animate)
         }
         
         animate()
@@ -764,7 +802,7 @@ export class VRMAnimationController {
     // 音声終了時のクリーンアップ
     const onEnded = () => {
       console.log('[VRMAnimationController] Audio ended, cleaning up')
-      if (animationId) cancelAnimationFrame(animationId)
+      if (this.animationId) cancelAnimationFrame(this.animationId)
       this.stopSpeaking()
       audio.removeEventListener('ended', onEnded)
       audio.removeEventListener('error', onError)
@@ -773,7 +811,7 @@ export class VRMAnimationController {
     // エラーハンドリング
     const onError = (e: Event) => {
       console.error('[VRMAnimationController] Audio error:', e)
-      if (animationId) cancelAnimationFrame(animationId)
+      if (this.animationId) cancelAnimationFrame(this.animationId)
       this.stopSpeaking()
       audio.removeEventListener('ended', onEnded)
       audio.removeEventListener('error', onError)

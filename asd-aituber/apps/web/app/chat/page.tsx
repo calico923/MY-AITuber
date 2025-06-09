@@ -8,6 +8,9 @@ import VRMViewer from '@/components/VRMViewer'
 import type { VRMViewerRef } from '@/components/VRMViewer'
 import type { Emotion } from '@asd-aituber/types'
 import { useSimpleUnifiedVoice } from '@/hooks/useUnifiedVoiceSynthesis'
+import type { VoicevoxAudioQuery } from '@/lib/voicevox-client'
+// Removed direct import to avoid webpack chunk issues
+// import { LipSync } from '@/lib/lip-sync'
 
 export default function ChatPage() {
   const { messages, isLoading, sendMessage, mode, changeMode } = useChat()
@@ -15,13 +18,28 @@ export default function ChatPage() {
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>('neutral')
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [mounted, setMounted] = useState(false)
+  // Priority 1: 処理済みメッセージIDを追跡して重複音声再生を防ぐ
+  const [processedMessageIds, setProcessedMessageIds] = useState(new Set<string>())
+  const [isInitialized, setIsInitialized] = useState(false) // 初期化フラグ
+  // Priority 2: 音声とリップシンクの同期のための状態変数
+  const [currentAudioQuery, setCurrentAudioQuery] = useState<any>(null)
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null)
   
   
-  // 音声合成機能（シンプル版）
+  // 音声合成機能（Priority 2: リップシンクデータ付き）
   const { speak: speakText, stop: stopSpeech, isSpeaking: isVoiceSpeaking, currentEngine } = useSimpleUnifiedVoice({
     preferredEngine: 'auto', // VOICEVOXが利用可能なら自動選択
     defaultMode: mode === 'ASD' ? 'asd' : 'nt', // チャットモードと連動
-    volume: 0.8
+    volume: 0.8,
+    // Priority 2: リップシンクデータと音声要素のコールバック
+    onLipSyncData: (audioQuery: VoicevoxAudioQuery) => {
+      console.log('[ChatPage] リップシンクデータを受信しました')
+      setCurrentAudioQuery(audioQuery)
+    },
+    onAudioReady: (audio: HTMLAudioElement) => {
+      console.log('[ChatPage] 音声要素が準備できました')
+      setCurrentAudio(audio)
+    }
   })
   
   // クライアントサイドでのみマウント
@@ -29,94 +47,181 @@ export default function ChatPage() {
     setMounted(true)
   }, [])
 
+  // Priority 1: 初回ロード時に既存メッセージを全て処理済みとしてマーク
+  useEffect(() => {
+    if (!isInitialized) {
+      console.log('[ChatPage] 初期化開始: 既存メッセージをチェック')
+      if (messages.length > 0) {
+        console.log('[ChatPage] 既存メッセージが見つかりました。処理済みとしてマーク')
+        const existingIds = new Set(messages.map(msg => msg.id))
+        setProcessedMessageIds(existingIds)
+        console.log(`[ChatPage] 処理済みとしてマークしたメッセージ数: ${existingIds.size}`)
+      } else {
+        console.log('[ChatPage] 既存メッセージはありません')
+      }
+      setIsInitialized(true)
+      console.log('[ChatPage] 初期化完了')
+    }
+  }, [messages, isInitialized])
+
+  // Priority 2: 音声とリップシンクデータが両方揃ったら同期実行
+  useEffect(() => {
+    if (currentAudio && currentAudioQuery && vrmViewerRef.current) {
+      console.log('[ChatPage] 音声とリップシンクデータが揃いました。同期実行を開始します')
+      
+      const executeLipSync = async () => {
+        try {
+          // 動的importでLipSyncを読み込み、正確なリップシンクフレームを生成
+          const { LipSync } = await import('@/lib/lip-sync')
+          const frames = LipSync.createFramesFromVoicevox(currentAudioQuery)
+          console.log('[ChatPage] リップシンクフレーム数:', frames.length)
+          
+          // 音声と口パクを完全に同期させてスタート
+          if (vrmViewerRef.current) {
+            vrmViewerRef.current.speakWithAudio?.(currentAudio, frames)
+          }
+          
+          // 処理完了後、stateをリセット（次の再生に備える）
+          setCurrentAudio(null)
+          setCurrentAudioQuery(null)
+        } catch (error) {
+          console.error('[ChatPage] リップシンク同期実行中にエラーが発生しました:', error)
+          // エラー時はstateをリセット
+          setCurrentAudio(null)
+          setCurrentAudioQuery(null)
+          
+          // フォールバック: シンプルなテキストベースのリップシンクを実行
+          if (vrmViewerRef.current && messages.length > 0) {
+            const lastMessage = messages[messages.length - 1]
+            if (lastMessage.role === 'assistant') {
+              console.log('[ChatPage] フォールバック: シンプルなリップシンクを実行します')
+              vrmViewerRef.current.speakText(lastMessage.content, () => {
+                console.log('[ChatPage] フォールバック リップシンク完了')
+                setIsSpeaking(false)
+              })
+            }
+          }
+        }
+      }
+      
+      executeLipSync()
+    }
+  }, [currentAudio, currentAudioQuery, messages])
+
   // 最新メッセージに基づいて感情を推定とリップシンク
   useEffect(() => {
+    // 初期化が完了するまで待つ
+    if (!isInitialized) {
+      console.log('[ChatPage] 初期化が完了していません。メッセージ処理をスキップします。')
+      return
+    }
+    
     if (messages.length === 0) return
 
     const lastMessage = messages[messages.length - 1]
     console.log('[ChatPage] ===== 新しいメッセージ検出 =====')
+    console.log('[ChatPage] 初期化済み:', isInitialized)
     console.log('[ChatPage] Role:', lastMessage.role)
     console.log('[ChatPage] Content:', lastMessage.content)
     console.log('[ChatPage] Emotion:', lastMessage.emotion)
+    console.log('[ChatPage] Message ID:', lastMessage.id)
+    console.log('[ChatPage] 処理済みIDの数:', processedMessageIds.size)
     
+    // Priority 1: 処理済みメッセージのチェック
+    if (processedMessageIds.has(lastMessage.id)) {
+      console.log('[ChatPage] このメッセージは既に処理済みです。音声再生をスキップします。')
+      return
+    }
+    
+    // 新しいアシスタントメッセージかどうかを確認
     if (lastMessage.role === 'assistant') {
-      console.log('[ChatPage] アシスタントメッセージのため、音声合成を開始します')
+      console.log('[ChatPage] 新しいアシスタントメッセージを検出しました。音声合成を開始します。')
       // assistantメッセージの感情を反映
       if (lastMessage.emotion) {
         setCurrentEmotion(lastMessage.emotion)
       }
       
-      // 音声合成とリップシンク（シンプル版に戻す）
-      const speakWithLipSync = async () => {
-        console.log('[ChatPage] Starting simple speakWithLipSync')
+      // Priority 1: メッセージを処理済みとしてマーク
+      setProcessedMessageIds(prev => new Set(prev).add(lastMessage.id))
+      console.log('[ChatPage] メッセージIDを処理済みとしてマークしました:', lastMessage.id)
+      
+      // Priority 2: 音声合成のみを開始（リップシンクは別のuseEffectで同期実行）
+      const startVoiceSynthesis = async () => {
+        console.log('[ChatPage] Priority 2: 音声合成を開始します')
         
         // 既存の音声を停止
         stopSpeech()
         
-        // VRMリップシンクを開始
-        if (vrmViewerRef.current) {
-          setIsSpeaking(true)
-          
-          // シンプルなテキストベースのリップシンクを開始
-          vrmViewerRef.current.speakText(lastMessage.content, () => {
-            console.log('[ChatPage] Lip sync completed')
-            setIsSpeaking(false)
-            // 話し終わったら3秒後に表情をneutralに戻す
-            setTimeout(() => {
-              if (vrmViewerRef.current) {
-                vrmViewerRef.current.setEmotion('neutral')
-                setCurrentEmotion('neutral')
-              }
-            }, 3000)
-          })
-          
-          // 音声合成を並行して実行
-          await speakText(lastMessage.content, {
-            emotion: lastMessage.emotion || 'neutral',
-            mode: mode === 'ASD' ? 'asd' : 'nt',
-            callbacks: {
-              onEnd: () => {
-                console.log('[ChatPage] Voice synthesis ended')
-              },
-              onError: (error) => {
-                console.error('[ChatPage] Speech synthesis error:', error)
-                setIsSpeaking(false)
-              }
-            }
-          })
-        } else {
-          console.log('[ChatPage] VRMViewer not available, playing voice only')
-          // VRMViewerが利用できない場合は音声のみ再生
+        // 表情を設定
+        setIsSpeaking(true)
+        
+        // タイムアウト処理: 5秒以内にリップシンクデータが来なければフォールバック
+        const fallbackTimeout = setTimeout(() => {
+          console.warn('[ChatPage] VOICEVOX データ取得タイムアウト。フォールバック処理を実行します')
+          if (vrmViewerRef.current) {
+            vrmViewerRef.current.speakText(lastMessage.content, () => {
+              console.log('[ChatPage] フォールバック リップシンク完了')
+              setIsSpeaking(false)
+            })
+          }
+        }, 5000)
+        
+        // 音声合成を実行（コールバックでリップシンクデータと音声要素を受け取る）
+        try {
           await speakText(lastMessage.content, {
             emotion: lastMessage.emotion || 'neutral',
             mode: mode === 'ASD' ? 'asd' : 'nt',
             callbacks: {
               onStart: () => {
-                console.log('[ChatPage] Voice-only: synthesis started')
-                setIsSpeaking(true)
+                console.log('[ChatPage] Voice synthesis started')
+                clearTimeout(fallbackTimeout) // 成功したらタイムアウトをクリア
               },
               onEnd: () => {
-                console.log('[ChatPage] Voice-only: synthesis ended')
+                console.log('[ChatPage] Voice synthesis ended')
+                clearTimeout(fallbackTimeout)
                 setIsSpeaking(false)
-                setTimeout(() => setCurrentEmotion('neutral'), 3000)
+                // 話し終わったら3秒後に表情をneutralに戻す
+                setTimeout(() => {
+                  if (vrmViewerRef.current) {
+                    vrmViewerRef.current.setEmotion('neutral')
+                    setCurrentEmotion('neutral')
+                  }
+                }, 3000)
+              },
+              onError: (error) => {
+                console.error('[ChatPage] Speech synthesis error:', error)
+                clearTimeout(fallbackTimeout)
+                setIsSpeaking(false)
+                // エラー時もフォールバック実行
+                if (vrmViewerRef.current) {
+                  vrmViewerRef.current.speakText(lastMessage.content, () => {
+                    console.log('[ChatPage] エラー時フォールバック リップシンク完了')
+                    setIsSpeaking(false)
+                  })
+                }
               }
             }
           })
+        } catch (error) {
+          console.error('[ChatPage] Voice synthesis failed:', error)
+          clearTimeout(fallbackTimeout)
+          setIsSpeaking(false)
+          // 例外時もフォールバック実行
+          if (vrmViewerRef.current) {
+            vrmViewerRef.current.speakText(lastMessage.content, () => {
+              console.log('[ChatPage] 例外時フォールバック リップシンク完了')
+              setIsSpeaking(false)
+            })
+          }
         }
       }
       
-      // VRMViewerの準備ができるまで少し待つ
-      if (vrmViewerRef.current) {
-        console.log('[ChatPage] VRMViewer is ready, executing speakWithLipSync immediately')
-        speakWithLipSync()
-      } else {
-        console.log('[ChatPage] VRMViewer not ready, waiting 500ms')
-        setTimeout(speakWithLipSync, 500)
-      }
+      // 音声合成を開始
+      startVoiceSynthesis()
     } else {
       console.log('[ChatPage] Not an assistant message, skipping voice synthesis')
     }
-  }, [messages])
+  }, [messages, processedMessageIds, isInitialized])
 
 
   // ローディング状態に基づいて表情を更新
