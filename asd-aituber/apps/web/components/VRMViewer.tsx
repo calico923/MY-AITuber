@@ -14,8 +14,10 @@ export interface VRMViewerRef {
   setSpeaking: (intensity: number) => void
   speakText: (text: string, onComplete?: () => void) => void
   stopSpeaking: () => void
+  forceStopSpeaking?: () => void  // Priority 3: 強制停止機能
   getAvailableExpressions: () => string[]
-  speakWithAudio?: (audio: HTMLAudioElement, frames: LipSyncFrame[]) => void  // 新規追加
+  speakWithAudio?: (audio: HTMLAudioElement, frames: LipSyncFrame[]) => void  // 旧方式
+  playAudioWithLipSync?: (audioBuffer: ArrayBuffer) => Promise<void>  // ✅ 新方式: aituber-kit style
 }
 
 interface VRMViewerProps {
@@ -67,6 +69,15 @@ const VRMViewer = forwardRef<VRMViewerRef, VRMViewerProps>(
             animationControllerRef.current.stopSpeaking()
           }
         },
+        forceStopSpeaking: () => {
+          console.log('VRMViewer.forceStopSpeaking called')
+          if (animationControllerRef.current) {
+            console.log('Animation controller available, calling forceStopSpeaking')
+            animationControllerRef.current.forceStopSpeaking()
+          } else {
+            console.warn('Animation controller not available for forceStopSpeaking')
+          }
+        },
         getAvailableExpressions: () => availableExpressions,
         speakWithAudio: (audio: HTMLAudioElement, frames: LipSyncFrame[]) => {
           console.log('VRMViewer.speakWithAudio called with', frames.length, 'frames')
@@ -75,6 +86,15 @@ const VRMViewer = forwardRef<VRMViewerRef, VRMViewerProps>(
             animationControllerRef.current.speakWithAudio(audio, frames)
           } else {
             console.warn('Animation controller not available for speakWithAudio')
+          }
+        },
+        playAudioWithLipSync: async (audioBuffer: ArrayBuffer) => {
+          console.log('VRMViewer.playAudioWithLipSync called with ArrayBuffer of', audioBuffer.byteLength, 'bytes')
+          if (animationControllerRef.current) {
+            console.log('Animation controller available, calling playAudioWithLipSync')
+            await animationControllerRef.current.playAudioWithLipSync(audioBuffer)
+          } else {
+            console.warn('Animation controller not available for playAudioWithLipSync')
           }
         }
       }

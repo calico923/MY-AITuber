@@ -1,6 +1,7 @@
 import { VRM } from '@pixiv/three-vrm'
 import type { Emotion } from '@asd-aituber/types'
 import { LipSync, type LipSyncFrame } from './lip-sync'
+import { AudioLipSync } from './audio-lip-sync'
 
 /**
  * VRMアニメーションコントローラー
@@ -12,8 +13,13 @@ export class VRMAnimationController {
   private isBlinking: boolean = false
   private nextBlinkTime: number = 0
   private currentEmotion: Emotion = 'neutral'
+  private lastAppliedEmotion: Emotion | null = null
   private lipSync: LipSync
   private isSpeaking: boolean = false
+  private animationId: number | null = null
+  
+  // ✅ AudioLipSync integration for real-time audio analysis
+  private audioLipSync: AudioLipSync | null = null
   
   // アニメーション設定
   private readonly blinkInterval = { min: 1000, max: 5000 } // ms
@@ -36,6 +42,14 @@ export class VRMAnimationController {
     
     // リップシンクを初期化
     this.lipSync = new LipSync()
+    
+    // ✅ AudioLipSync初期化（aituber-kit方式）
+    try {
+      this.audioLipSync = new AudioLipSync()
+    } catch (error) {
+      console.warn('[VRMAnimationController] AudioLipSync initialization failed, using fallback:', error)
+      this.audioLipSync = null
+    }
   }
 
   /**
@@ -50,6 +64,7 @@ export class VRMAnimationController {
     this.updateEmotion()
     this.updateIdleAnimation()
     this.updateLipSync() // リップシンクの更新を追加
+    this.updateRealtimeLipSync() // ✅ リアルタイムリップシンクの更新
   }
 
   /**
@@ -118,14 +133,18 @@ export class VRMAnimationController {
   }
 
   /**
-   * 感情表現の更新
+   * 感情表現の更新（感情が変更された時のみ）
    */
   private updateEmotion(): void {
     const expressionManager = this.vrm.expressionManager
     if (!expressionManager) return
 
-    // 現在の感情に基づいて表情を設定
-    this.applyEmotionExpression(this.currentEmotion)
+    // 感情が変更された場合のみ処理
+    if (this.currentEmotion !== this.lastAppliedEmotion) {
+      console.log(`[VRMAnimationController] Emotion changed: ${this.lastAppliedEmotion} → ${this.currentEmotion}`)
+      this.applyEmotionExpression(this.currentEmotion)
+      this.lastAppliedEmotion = this.currentEmotion
+    }
   }
 
   /**
@@ -243,7 +262,10 @@ export class VRMAnimationController {
    * @param emotion - 設定する感情
    */
   setEmotion(emotion: Emotion): void {
-    this.currentEmotion = emotion
+    if (this.currentEmotion !== emotion) {
+      console.log(`[VRMAnimationController] setEmotion called: ${this.currentEmotion} → ${emotion}`)
+      this.currentEmotion = emotion
+    }
   }
 
   /**
@@ -305,7 +327,8 @@ export class VRMAnimationController {
 
     try {
       if (expressionManager.getExpressionTrackName(expressionName)) {
-        console.log(`[VRMAnimationController] Setting expression: ${expressionName} = ${value.toFixed(2)}`)
+        // ログを削減: デバッグ時のみ表示
+        // console.log(`[VRMAnimationController] Setting expression: ${expressionName} = ${value.toFixed(2)}`)
         expressionManager.setValue(expressionName, value)
       } else {
         console.warn(`[VRMAnimationController] Expression '${expressionName}' not available`)
@@ -528,42 +551,38 @@ export class VRMAnimationController {
   
   /**
    * VRM標準の口表情を設定（aituber-kit方式）
+   * 修正: 全表情リセットを削除し、'aa'表情のみ直接制御
    */
   private setStandardMouthExpression(phoneme: string, intensity: number): void {
     const expressionManager = this.vrm.expressionManager!
     const available = this.vowelExpressionInfo!.available
     
-    // 全ての口表情をリセット
-    const allMouthExpressions = ['aa', 'ih', 'ou', 'ee', 'oh']
-    allMouthExpressions.forEach(expr => {
-      if (available.includes(expr)) {
-        try {
-          expressionManager.setValue(expr, 0)
-        } catch (error) {
-          // Skip silently
-        }
-      }
-    })
+    // ❌ FIXED: 毎フレームの全表情リセットを削除（これが口が動かない原因でした）
+    // const allMouthExpressions = ['aa', 'ih', 'ou', 'ee', 'oh']
+    // allMouthExpressions.forEach(expr => {
+    //   if (available.includes(expr)) {
+    //     try {
+    //       expressionManager.setValue(expr, 0) // ← この処理が問題でした
+    //     } catch (error) {
+    //       // Skip silently
+    //     }
+    //   }
+    // })
 
-    // aituber-kit方式：主に'aa'表情を使用
-    if (phoneme !== 'silence' && available.includes('aa')) {
+    // ✅ aituber-kit方式：'aa'表情のみを直接制御
+    if (available.includes('aa')) {
       try {
-        console.log(`[VRMAnimationController] Setting 'aa' expression to ${intensity}`)
-        expressionManager.setValue('aa', intensity)
+        // phoneme が 'silence' の場合は口を閉じる、それ以外は開く
+        const value = phoneme !== 'silence' ? intensity : 0
+        expressionManager.setValue('aa', value)
         
-        // 設定後の値を確認
-        const currentValue = expressionManager.getValue('aa')
-        console.log(`[VRMAnimationController] 'aa' expression value after setting: ${currentValue}`)
-        
-        if (!this.alternativeLogShown) {
+        if (!this.alternativeLogShown && value > 0) {
           console.log('[VRMAnimationController] Using VRM standard \'aa\' expression for lip sync')
           this.alternativeLogShown = true
         }
       } catch (error) {
         console.error(`[VRMAnimationController] Error setting 'aa' expression:`, error)
       }
-    } else {
-      console.log(`[VRMAnimationController] Skipping 'aa' - phoneme: ${phoneme}, available: ${available.join(', ')}`)
     }
   }
   
@@ -647,6 +666,66 @@ export class VRMAnimationController {
     this.lipSync.stop()
     this.isSpeaking = false
     this.setMouthShape('silence', 0)
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId)
+      this.animationId = null
+    }
+  }
+
+  /**
+   * リップシンクを強制停止（Priority 3: 強制停止機能）
+   * すべてのアニメーション関連のタイマーとエラー状態をリセットする
+   */
+  forceStopSpeaking(): void {
+    console.log('[VRMAnimationController] Force stopping all speaking animations')
+    
+    // 基本の停止処理
+    this.isSpeaking = false
+    this.lipSync.stop()
+    
+    // ✅ AudioLipSync停止も追加
+    if (this.audioLipSync) {
+      this.audioLipSync.stop()
+    }
+    
+    // アニメーションフレームのキャンセル
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId)
+      this.animationId = null
+    }
+    
+    // 口の形状をリセット
+    this.setMouthShape('silence', 0)
+    
+    console.log('[VRMAnimationController] Force stop completed')
+  }
+
+  /**
+   * ✅ AudioLipSyncを使った音声再生（aituber-kit方式）
+   * ArrayBufferを直接受け取ってリアルタイムリップシンク付きで再生
+   */
+  async playAudioWithLipSync(audioBuffer: ArrayBuffer): Promise<void> {
+    if (!this.audioLipSync) {
+      console.warn('[VRMAnimationController] AudioLipSync not available, falling back to text-based')
+      return
+    }
+
+    try {
+      console.log('[VRMAnimationController] Starting audio playback with real-time lip sync')
+      
+      // 既存の再生を停止
+      this.forceStopSpeaking()
+      
+      // 音声再生開始
+      this.isSpeaking = true
+      await this.audioLipSync.playWithLipSync(audioBuffer)
+      
+      console.log('[VRMAnimationController] Audio playback started successfully')
+    } catch (error) {
+      console.error('[VRMAnimationController] Audio playback failed:', error)
+      this.isSpeaking = false
+      throw error
+    }
   }
 
   /**
@@ -660,8 +739,6 @@ export class VRMAnimationController {
     // 既存のリップシンクを停止
     this.stopSpeaking()
     this.isSpeaking = true
-    
-    let animationId: number | null = null
     
     // 音声のメタデータが読み込まれてから処理（より確実な同期）
     const startSync = () => {
@@ -737,7 +814,7 @@ export class VRMAnimationController {
             }
           }
           
-          animationId = requestAnimationFrame(animate)
+          this.animationId = requestAnimationFrame(animate)
         }
         
         animate()
@@ -764,7 +841,7 @@ export class VRMAnimationController {
     // 音声終了時のクリーンアップ
     const onEnded = () => {
       console.log('[VRMAnimationController] Audio ended, cleaning up')
-      if (animationId) cancelAnimationFrame(animationId)
+      if (this.animationId) cancelAnimationFrame(this.animationId)
       this.stopSpeaking()
       audio.removeEventListener('ended', onEnded)
       audio.removeEventListener('error', onError)
@@ -773,7 +850,7 @@ export class VRMAnimationController {
     // エラーハンドリング
     const onError = (e: Event) => {
       console.error('[VRMAnimationController] Audio error:', e)
-      if (animationId) cancelAnimationFrame(animationId)
+      if (this.animationId) cancelAnimationFrame(this.animationId)
       this.stopSpeaking()
       audio.removeEventListener('ended', onEnded)
       audio.removeEventListener('error', onError)
@@ -1013,6 +1090,34 @@ export class VRMAnimationController {
     // VRMのupdateサイクルと同期してリップシンクを更新
     // 現在の実装では何もしない（既存のLipSyncクラスがrequestAnimationFrameを使用）
     // 将来的にここでリップシンクの同期処理を実装
+  }
+
+  /**
+   * ✅ リアルタイムリップシンクの更新（aituber-kit方式）
+   * 実際の音声ボリュームに基づいて口の動きを制御
+   */
+  private updateRealtimeLipSync(): void {
+    if (!this.audioLipSync || !this.isSpeaking) {
+      return
+    }
+
+    try {
+      // リアルタイムで音量を取得
+      const volume = this.audioLipSync.getVolume()
+      const expressionManager = this.vrm.expressionManager
+
+      if (expressionManager) {
+        // aituber-kit方式：音量に基づいて'aa'表情を制御
+        // 感情がneutralの場合は0.5倍、それ以外は0.25倍（aituber-kitと同じ）
+        const weight = this.currentEmotion === 'neutral' 
+          ? volume * 0.5 
+          : volume * 0.25
+
+        expressionManager.setValue('aa', weight)
+      }
+    } catch (error) {
+      console.error('[VRMAnimationController] Realtime lip sync update failed:', error)
+    }
   }
 
   /**

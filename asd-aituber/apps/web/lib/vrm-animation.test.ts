@@ -123,11 +123,8 @@ describe('VRMAnimationController', () => {
       
       expect(controller['isSpeaking']).toBe(false)
       // Should reset mouth to silence
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('a', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('i', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('u', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('e', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('o', 0)
+      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('aa', 0)
+      // Note: Only 'aa' expression is used in new AudioLipSync system
     })
   })
 
@@ -204,7 +201,7 @@ describe('VRMAnimationController', () => {
       // After reset, should set neutral emotion and stop speaking
       controller.update(1/60)
       expect(mockExpressionManager.setValue).toHaveBeenCalledWith('neutral', 0.1)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('a', 0)
+      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('aa', 0)
     })
   })
 
@@ -221,11 +218,8 @@ describe('VRMAnimationController', () => {
       
       expect(controller['isSpeaking']).toBe(false)
       // Should reset mouth to silence
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('a', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('i', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('u', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('e', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('o', 0)
+      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('aa', 0)
+      // Note: Only 'aa' expression is used in new AudioLipSync system
     })
 
     it('should handle mouth shape setting', () => {
@@ -241,11 +235,8 @@ describe('VRMAnimationController', () => {
       
       expect(controller['isSpeaking']).toBe(false)
       // All vowels should be reset
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('a', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('i', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('u', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('e', 0)
-      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('o', 0)
+      expect(mockExpressionManager.setValue).toHaveBeenCalledWith('aa', 0)
+      // Note: Only 'aa' expression is used in new AudioLipSync system
     })
   })
 
