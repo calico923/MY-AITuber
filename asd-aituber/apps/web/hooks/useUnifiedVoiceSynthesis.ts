@@ -25,6 +25,8 @@ export interface UseUnifiedVoiceSynthesisOptions {
   // Phase 4: 音素データとオーディオ要素のコールバック
   onLipSyncData?: (audioQuery: VoicevoxAudioQuery) => void
   onAudioReady?: (audio: HTMLAudioElement) => void
+  // ✅ AudioLipSync対応のコールバック
+  onAudioBufferReady?: (audioBuffer: ArrayBuffer) => void
 }
 
 export interface UseUnifiedVoiceSynthesisReturn {
@@ -78,7 +80,8 @@ export function useUnifiedVoiceSynthesis(
     volume: initialVolume = 1.0,
     callbacks: externalCallbacks = {},
     onLipSyncData,
-    onAudioReady
+    onAudioReady,
+    onAudioBufferReady
   } = options
 
   // 状態管理
@@ -248,6 +251,8 @@ export function useUnifiedVoiceSynthesis(
       // Phase 4: 音素データとオーディオ要素のコールバックを追加
       onLipSyncData,
       onAudioReady,
+      // ✅ AudioLipSync対応のコールバックを追加
+      onAudioBufferReady,
       ...overrideOptions
     }
 
@@ -269,7 +274,10 @@ export function useUnifiedVoiceSynthesis(
     selectedSpeaker, 
     selectedWebVoice, 
     volume, 
-    externalCallbacks
+    externalCallbacks,
+    onLipSyncData,
+    onAudioReady,
+    onAudioBufferReady
   ])
 
   // 停止

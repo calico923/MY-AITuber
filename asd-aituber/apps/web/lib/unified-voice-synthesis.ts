@@ -25,6 +25,8 @@ export interface UnifiedVoiceOptions {
   // 新規追加: 音素データとオーディオ要素のコールバック
   onLipSyncData?: (audioQuery: VoicevoxAudioQuery) => void
   onAudioReady?: (audio: HTMLAudioElement) => void
+  // ✅ AudioLipSync対応のコールバック
+  onAudioBufferReady?: (audioBuffer: ArrayBuffer) => void
 }
 
 export interface VoiceEngineStatus {
@@ -53,6 +55,8 @@ export class UnifiedVoiceSynthesis {
   // 新規追加: 音素データとオーディオ要素のコールバック
   private onLipSyncData?: (audioQuery: VoicevoxAudioQuery) => void
   private onAudioReady?: (audio: HTMLAudioElement) => void
+  // ✅ AudioLipSync対応のコールバック
+  private onAudioBufferReady?: (audioBuffer: ArrayBuffer) => void
 
   constructor() {
     this.webSpeechManager = new SpeechSynthesisManager()
@@ -149,7 +153,8 @@ export class UnifiedVoiceSynthesis {
       volume = 1.0,
       callbacks = {},
       onLipSyncData,
-      onAudioReady
+      onAudioReady,
+      onAudioBufferReady
     } = options
 
     // 既存の再生を停止
@@ -159,6 +164,7 @@ export class UnifiedVoiceSynthesis {
     this.callbacks = callbacks
     this.onLipSyncData = onLipSyncData
     this.onAudioReady = onAudioReady
+    this.onAudioBufferReady = onAudioBufferReady
 
     try {
       const selectedEngine = await this.selectBestEngine(engine)
@@ -212,7 +218,15 @@ export class UnifiedVoiceSynthesis {
         this.onLipSyncData(result.audioQuery)
       }
       
-      // ArrayBufferをBlobに変換
+      // ✅ AudioBuffer を直接コールバックで提供（aituber-kit方式）
+      if (this.onAudioBufferReady) {
+        console.log('🎵 Passing ArrayBuffer directly for AudioLipSync')
+        this.onAudioBufferReady(result.audioBuffer)
+        // AudioLipSync を使う場合は、HTMLAudioElement は作成しない
+        return true
+      }
+      
+      // 従来方式（HTMLAudioElement）のフォールバック
       const audioBlob = new Blob([result.audioBuffer], { type: 'audio/wav' })
       const audioUrl = URL.createObjectURL(audioBlob)
 

@@ -26,19 +26,17 @@ export default function ChatPage() {
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null)
   
   
-  // 音声合成機能（Priority 2: リップシンクデータ付き）
+  // 音声合成機能（✅ AudioLipSync方式に更新）
   const { speak: speakText, stop: stopSpeech, isSpeaking: isVoiceSpeaking, currentEngine } = useSimpleUnifiedVoice({
     preferredEngine: 'auto', // VOICEVOXが利用可能なら自動選択
     defaultMode: mode === 'ASD' ? 'asd' : 'nt', // チャットモードと連動
     volume: 0.8,
-    // Priority 2: リップシンクデータと音声要素のコールバック
-    onLipSyncData: (audioQuery: VoicevoxAudioQuery) => {
-      console.log('[ChatPage] リップシンクデータを受信しました')
-      setCurrentAudioQuery(audioQuery)
-    },
-    onAudioReady: (audio: HTMLAudioElement) => {
-      console.log('[ChatPage] 音声要素が準備できました')
-      setCurrentAudio(audio)
+    // ✅ AudioLipSync方式: AudioBufferを直接VRMに渡す
+    onAudioBufferReady: (audioBuffer: ArrayBuffer) => {
+      console.log('[ChatPage] ✅ AudioBuffer received for AudioLipSync')
+      if (vrmViewerRef.current?.playAudioWithLipSync) {
+        vrmViewerRef.current.playAudioWithLipSync(audioBuffer)
+      }
     }
   })
   
@@ -64,49 +62,7 @@ export default function ChatPage() {
     }
   }, [messages, isInitialized])
 
-  // Priority 2: 音声とリップシンクデータが両方揃ったら同期実行
-  useEffect(() => {
-    if (currentAudio && currentAudioQuery && vrmViewerRef.current) {
-      console.log('[ChatPage] 音声とリップシンクデータが揃いました。同期実行を開始します')
-      
-      const executeLipSync = async () => {
-        try {
-          // 動的importでLipSyncを読み込み、正確なリップシンクフレームを生成
-          const { LipSync } = await import('@/lib/lip-sync')
-          const frames = LipSync.createFramesFromVoicevox(currentAudioQuery)
-          console.log('[ChatPage] リップシンクフレーム数:', frames.length)
-          
-          // 音声と口パクを完全に同期させてスタート
-          if (vrmViewerRef.current) {
-            vrmViewerRef.current.speakWithAudio?.(currentAudio, frames)
-          }
-          
-          // 処理完了後、stateをリセット（次の再生に備える）
-          setCurrentAudio(null)
-          setCurrentAudioQuery(null)
-        } catch (error) {
-          console.error('[ChatPage] リップシンク同期実行中にエラーが発生しました:', error)
-          // エラー時はstateをリセット
-          setCurrentAudio(null)
-          setCurrentAudioQuery(null)
-          
-          // フォールバック: シンプルなテキストベースのリップシンクを実行
-          if (vrmViewerRef.current && messages.length > 0) {
-            const lastMessage = messages[messages.length - 1]
-            if (lastMessage.role === 'assistant') {
-              console.log('[ChatPage] フォールバック: シンプルなリップシンクを実行します')
-              vrmViewerRef.current.speakText(lastMessage.content, () => {
-                console.log('[ChatPage] フォールバック リップシンク完了')
-                setIsSpeaking(false)
-              })
-            }
-          }
-        }
-      }
-      
-      executeLipSync()
-    }
-  }, [currentAudio, currentAudioQuery, messages])
+  // ✅ 古い複雑な同期処理は削除 - AudioLipSync方式では不要
 
   // 最新メッセージに基づいて感情を推定とリップシンク
   useEffect(() => {
