@@ -66,6 +66,33 @@ describe('VoiceInput', () => {
       const button = screen.getByRole('button')
       expect(button).toBeDisabled()
     })
+
+    // ✅ Task 1.1.1: VoiceInput disabled propのテスト作成
+    it('disabled propがtrueの場合、マイクボタンが無効化される', () => {
+      render(<VoiceInput onTranscript={mockOnTranscript} disabled={true} />)
+      const button = screen.getByRole('button', { name: /mic/i })
+      expect(button).toBeDisabled()
+    })
+
+    // ❌ Task 1.1.3: VoiceInput状態変化通知のテスト作成
+    it('音声認識状態が変化した時にonStateChangeが呼ばれる', async () => {
+      const mockStartListening = vi.fn().mockResolvedValue(true)  // 成功を返すようにモック
+      const onStateChange = vi.fn()
+      
+      mockUseSpeechRecognition.mockReturnValue({
+        ...defaultMockReturn,
+        startListening: mockStartListening
+      })
+      
+      const { getByRole } = render(<VoiceInput onTranscript={mockOnTranscript} onStateChange={onStateChange} />)
+      
+      fireEvent.click(getByRole('button'))
+      
+      // async処理が完了するまで待機
+      await waitFor(() => {
+        expect(onStateChange).toHaveBeenCalledWith(true)
+      })
+    })
   })
 
   describe('音声認識がサポートされていない場合', () => {

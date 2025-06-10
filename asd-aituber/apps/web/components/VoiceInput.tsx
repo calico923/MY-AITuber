@@ -8,13 +8,17 @@ import { debugSpeechAPI, explainWebSpeechAPIAuth } from '@/lib/speech-debug'
 interface VoiceInputProps {
   onTranscript: (transcript: string) => void
   isDisabled?: boolean
+  disabled?: boolean  // ✅ Task 1.1.2: disabled prop追加
+  onStateChange?: (isListening: boolean) => void  // ✅ Task 1.1.4: 状態変化通知
   placeholder?: string
   className?: string
 }
 
 export default function VoiceInput({ 
   onTranscript, 
-  isDisabled = false, 
+  isDisabled = false,
+  disabled = false,  // ✅ Task 1.1.2: disabled prop受け取り
+  onStateChange,  // ✅ Task 1.1.4: 状態変化通知受け取り
   placeholder = "マイクボタンを押して話してください...",
   className = ""
 }: VoiceInputProps) {
@@ -95,9 +99,13 @@ export default function VoiceInput({
     if (isListening) {
       stopListening()
       setIsActive(false)
+      onStateChange?.(false)  // ✅ Task 1.1.4: 停止時の状態変化通知
     } else {
       const success = await startListening()
       setIsActive(success)
+      if (success) {
+        onStateChange?.(true)  // ✅ Task 1.1.4: 開始時の状態変化通知
+      }
     }
   }
 
@@ -293,7 +301,8 @@ ${highPriorityIssues.length > 0 ?
         {/* マイクボタン */}
         <button
           onClick={handleToggleListening}
-          disabled={isDisabled}
+          disabled={isDisabled || disabled}  // ✅ Task 1.1.2: disabledの適用
+          aria-label="microphone"  // ✅ マイクボタンのアクセシビリティ向上
           className={`
             relative w-12 h-12 rounded-full flex items-center justify-center
             transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
