@@ -232,7 +232,7 @@ export default function ChatPage() {
     } else {
       console.log('[ChatPage] Not an assistant message, skipping voice synthesis')
     }
-  }, [messages, processedMessageIds, isInitialized])
+  }, [messages, processedMessageIds, isInitialized, mode, speakText, stopSpeech, setCurrentEmotion, setIsSpeaking, setProcessedMessageIds, setMicTimeoutOverride])
 
 
   // ローディング状態に基づいて表情を更新

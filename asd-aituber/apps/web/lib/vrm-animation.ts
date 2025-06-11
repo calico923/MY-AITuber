@@ -309,7 +309,6 @@ export class VRMAnimationController {
       case 'disgust':
         this.setExpressionSafely('angry', 0.3)
         break
-      case 'neutral':
       default:
         this.setExpressionSafely('neutral', 0.1)
         break
@@ -327,14 +326,10 @@ export class VRMAnimationController {
 
     try {
       if (expressionManager.getExpressionTrackName(expressionName)) {
-        // ログを削減: デバッグ時のみ表示
-        // console.log(`[VRMAnimationController] Setting expression: ${expressionName} = ${value.toFixed(2)}`)
         expressionManager.setValue(expressionName, value)
-      } else {
-        console.warn(`[VRMAnimationController] Expression '${expressionName}' not available`)
       }
     } catch (error) {
-      console.warn(`Failed to set expression ${expressionName}:`, error)
+      // Expression not available, skip silently
     }
   }
 
@@ -1012,17 +1007,13 @@ export class VRMAnimationController {
    */
   private setInitialPose(): void {
     if (!this.vrm.humanoid) {
-      console.warn('No humanoid found for initial pose')
       return
     }
 
-    console.log('Setting initial pose...')
     try {
       // 腕を下ろす
       const leftUpperArm = this.vrm.humanoid.getNormalizedBoneNode('leftUpperArm')
       const rightUpperArm = this.vrm.humanoid.getNormalizedBoneNode('rightUpperArm')
-      
-      console.log('Found bones:', { leftUpperArm: !!leftUpperArm, rightUpperArm: !!rightUpperArm })
       
       if (leftUpperArm) {
         leftUpperArm.rotation.z = Math.PI * 0.2   // 左腕をしっかり下げる
@@ -1076,9 +1067,8 @@ export class VRMAnimationController {
         spine.rotation.x = -Math.PI * 0.01
       }
 
-      console.log('Initial pose setup completed')
     } catch (error) {
-      console.warn('Failed to set initial pose:', error)
+      // Silently handle pose setup errors
     }
   }
 

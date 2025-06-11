@@ -186,7 +186,7 @@ export class AudioLipSync {
       try {
         this.currentSource.stop()
       } catch (error) {
-        // Ignore errors from stopping already stopped source
+        // Ignore InvalidStateError from stopping already stopped source
       }
       this.currentSource = null
     }
