@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { diagnoseNetworkEnvironment } from '@/lib/speech-recognition'
 import { debugSpeechAPI, explainWebSpeechAPIAuth } from '@/lib/speech-debug'
+import { AudioContextManager } from '@/libs/audio-context-manager'
 
 interface VoiceInputProps {
   onTranscript: (transcript: string) => void
   isDisabled?: boolean
   disabled?: boolean  // ✅ Task 1.1.2: disabled prop追加
+  audioPlaybackState?: { isPlaying: boolean }  // ✅ Task 2.1.2: 音声発話状態監視
   onStateChange?: (isListening: boolean) => void  // ✅ Task 1.1.4: 状態変化通知
   placeholder?: string
   className?: string
@@ -18,6 +20,7 @@ export default function VoiceInput({
   onTranscript, 
   isDisabled = false,
   disabled = false,  // ✅ Task 1.1.2: disabled prop受け取り
+  audioPlaybackState,  // ✅ Task 2.1.2: 音声発話状態受け取り
   onStateChange,  // ✅ Task 1.1.4: 状態変化通知受け取り
   placeholder = "マイクボタンを押して話してください...",
   className = ""
@@ -27,6 +30,16 @@ export default function VoiceInput({
   const [showPermissionRequest, setShowPermissionRequest] = useState(false)
   const [networkStatus, setNetworkStatus] = useState(typeof navigator !== 'undefined' ? navigator.onLine : false)
   const [showDiagnostic, setShowDiagnostic] = useState(false)
+  // ✅ エコーループ修正: 音声認識の前回状態を記憶
+  const [wasListeningBeforeDisabled, setWasListeningBeforeDisabled] = useState(false)
+  // ✅ Task 2.1.2: 音声発話状態の前回値を記憶
+  const prevIsPlayingRef = useRef(false)
+  // ✅ Task 2.1.2: タイマーのrefを追加
+  const audioTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // AudioContextManager統合用の状態
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const audioManagerRef = useRef<AudioContextManager | null>(null)
 
   const {
     isSupported,
@@ -83,6 +96,96 @@ export default function VoiceInput({
     }
   }, [])
 
+  // AudioContextManager統合 - 最適化されたエラーハンドリング付き
+  useEffect(() => {
+    try {
+      // AudioContextManagerのインスタンスを取得
+      audioManagerRef.current = AudioContextManager.getInstance()
+      
+      // VoiceInputControllerを登録（エラーハンドリング付き）
+      const controller = {
+        forceStop: () => {
+          try {
+            console.log('[VoiceInput] Force stop called by AudioContextManager')
+            setWasListeningBeforeDisabled(isListening)
+            stopListening()
+            setIsActive(false)
+          } catch (error) {
+            console.error('[VoiceInput] Error in forceStop:', error)
+          }
+        },
+        autoRestart: () => {
+          try {
+            console.log('[VoiceInput] Auto restart called by AudioContextManager')
+            if (wasListeningBeforeDisabled && hasPermission && !disabled && !isDisabled) {
+              const restartAsync = async () => {
+                try {
+                  const success = await startListening()
+                  if (success) {
+                    setIsActive(true)
+                    setWasListeningBeforeDisabled(false)
+                    console.log('[VoiceInput] Auto restart successful')
+                  } else {
+                    console.warn('[VoiceInput] Auto restart failed')
+                  }
+                } catch (error) {
+                  console.error('[VoiceInput] Error during auto restart:', error)
+                }
+              }
+              restartAsync()
+            }
+          } catch (error) {
+            console.error('[VoiceInput] Error in autoRestart:', error)
+          }
+        }
+      }
+      
+      audioManagerRef.current.registerVoiceInput(controller)
+      console.log('[VoiceInput] Registered with AudioContextManager')
+    } catch (error) {
+      console.error('[VoiceInput] Failed to initialize AudioContextManager integration:', error)
+    }
+    
+    return () => {
+      try {
+        console.log('[VoiceInput] Cleanup AudioContextManager integration')
+        // 将来的にunregisterメソッドが追加される場合のプレースホルダー
+      } catch (error) {
+        console.error('[VoiceInput] Error during cleanup:', error)
+      }
+    }
+  }, [isListening, hasPermission, disabled, isDisabled, startListening, stopListening, wasListeningBeforeDisabled])
+
+  // 音声合成状態の監視 - 最適化されたエラーハンドリング付き
+  useEffect(() => {
+    const checkSpeakingState = () => {
+      try {
+        if (audioManagerRef.current) {
+          const currentIsSpeaking = audioManagerRef.current.getIsSpeaking()
+          setIsSpeaking(currentIsSpeaking)
+        }
+      } catch (error) {
+        console.error('[VoiceInput] Error checking speaking state:', error)
+        // エラー時は安全側に倒して音声合成中ではないと判断
+        setIsSpeaking(false)
+      }
+    }
+    
+    // 初回実行（即座に状態を反映）
+    checkSpeakingState()
+    
+    // 100msごとに音声合成状態をチェック
+    const interval = setInterval(checkSpeakingState, 100)
+    
+    return () => {
+      try {
+        clearInterval(interval)
+      } catch (error) {
+        console.error('[VoiceInput] Error clearing speaking state interval:', error)
+      }
+    }
+  }, [])
+
   // 権限チェック
   useEffect(() => {
     if (hasPermission === false) {
@@ -92,22 +195,108 @@ export default function VoiceInput({
     }
   }, [hasPermission])
 
-  // 音声認識の切り替え
-  const handleToggleListening = async () => {
-    clearError()
+  // ✅ エコーループ修正: disabled状態変化の監視
+  useEffect(() => {
+    const isCurrentlyDisabled = isDisabled || disabled
     
-    if (isListening) {
+    if (isCurrentlyDisabled && isListening) {
+      // disabled=trueになったとき、進行中の音声認識を自動停止
+      console.log('[VoiceInput] 🔇 音声合成開始検出: 音声認識を自動停止します')
+      setWasListeningBeforeDisabled(true)  // 前回の状態を記憶
       stopListening()
       setIsActive(false)
-      onStateChange?.(false)  // ✅ Task 1.1.4: 停止時の状態変化通知
-    } else {
-      const success = await startListening()
-      setIsActive(success)
-      if (success) {
-        onStateChange?.(true)  // ✅ Task 1.1.4: 開始時の状態変化通知
+      onStateChange?.(false)  // 状態変化を通知
+    } else if (!isCurrentlyDisabled && !isListening && wasListeningBeforeDisabled && !audioPlaybackState?.isPlaying) {
+      // ✅ Task 2.1.2: 音声発話中でない場合のみ自動再開
+      // disabled=falseになったとき、前回聞いていた場合は自動再開（ただし音声発話中は除く）
+      console.log('[VoiceInput] 🎤 音声合成終了検出: 音声認識を自動再開します')
+      setWasListeningBeforeDisabled(false)  // 状態をリセット
+      const autoRestart = async () => {
+        const success = await startListening()
+        setIsActive(success)
+        if (success) {
+          onStateChange?.(true)
+        }
+      }
+      autoRestart()
+    }
+  }, [isDisabled, disabled, isListening, stopListening, startListening, onStateChange, wasListeningBeforeDisabled, audioPlaybackState?.isPlaying])
+
+  // ✅ Task 2.1.2: 音声発話終了1秒後にマイク自動ON
+  useEffect(() => {
+    if (!audioPlaybackState) {
+      return // audioPlaybackStateが未定義の場合は何もしない
+    }
+    
+    const currentIsPlaying = audioPlaybackState.isPlaying
+    const prevIsPlaying = prevIsPlayingRef.current
+    
+    // 既存タイマーをクリア
+    if (audioTimerRef.current) {
+      clearTimeout(audioTimerRef.current)
+      audioTimerRef.current = null
+    }
+    
+    // 音声発話が終了した場合（playing → not playing）
+    if (prevIsPlaying && !currentIsPlaying && wasListeningBeforeDisabled) {
+      console.log('[VoiceInput] 🔇 音声発話終了検出: 1秒後にマイク自動再開を設定')
+      
+      audioTimerRef.current = setTimeout(() => {
+        console.log('[VoiceInput] 🎤 音声発話終了1秒後: マイク自動再開')
+        const autoRestart = async () => {
+          const success = await startListening()
+          setIsActive(success)
+          if (success) {
+            onStateChange?.(true)
+          }
+        }
+        autoRestart()
+        setWasListeningBeforeDisabled(false) // 状態をリセット
+        audioTimerRef.current = null // タイマーをクリア
+      }, 1000)
+    }
+    
+    // 現在の状態を保存
+    prevIsPlayingRef.current = currentIsPlaying
+  }, [audioPlaybackState?.isPlaying, wasListeningBeforeDisabled, startListening, onStateChange])
+
+  // コンポーネントアンマウント時のクリーンアップ
+  useEffect(() => {
+    return () => {
+      if (audioTimerRef.current) {
+        clearTimeout(audioTimerRef.current)
       }
     }
+  }, [])
+
+  // 音声認識の切り替え - 最適化されたエラーハンドリング付き
+  const handleToggleListening = async () => {
+    try {
+      clearError()
+      
+      // ボタンのdisabled状態で音声合成中はブロックされるため、ここでの追加チェックは不要
+      if (isListening) {
+        stopListening()
+        setIsActive(false)
+        onStateChange?.(false)  // ✅ Task 1.1.4: 停止時の状態変化通知
+      } else {
+        const success = await startListening()
+        setIsActive(success)
+        if (success) {
+          onStateChange?.(true)  // ✅ Task 1.1.4: 開始時の状態変化通知
+        }
+      }
+    } catch (error) {
+      console.error('[VoiceInput] Error in handleToggleListening:', error)
+      setIsActive(false)
+      onStateChange?.(false)
+    }
   }
+
+  // マイクボタンの無効状態を最適化されたメモ化で計算
+  const isButtonDisabled = useMemo(() => {
+    return isDisabled || disabled || isSpeaking
+  }, [isDisabled, disabled, isSpeaking])
 
   // 権限要求
   const handleRequestPermission = async () => {
@@ -301,7 +490,7 @@ ${highPriorityIssues.length > 0 ?
         {/* マイクボタン */}
         <button
           onClick={handleToggleListening}
-          disabled={isDisabled || disabled}  // ✅ Task 1.1.2: disabledの適用
+          disabled={isButtonDisabled}  // ✅ Task 3.1.3: 最適化されたメモ化による無効状態管理
           aria-label="microphone"  // ✅ マイクボタンのアクセシビリティ向上
           className={`
             relative w-12 h-12 rounded-full flex items-center justify-center

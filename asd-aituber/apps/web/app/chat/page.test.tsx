@@ -158,6 +158,7 @@ describe('ChatPage', () => {
     expect(voiceInput).not.toBeDisabled()  // ✅ Task 1.2.4: マイク有効化の確認
   })
 
+
   // ❌ Task 1.3.1: タイムアウト保護機能のテスト作成
   it('音声合成が30秒以上続く場合、タイムアウトでマイクが有効化される', async () => {
     // タイマーをモック化

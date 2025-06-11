@@ -93,6 +93,103 @@ describe('VoiceInput', () => {
         expect(onStateChange).toHaveBeenCalledWith(true)
       })
     })
+
+    // ❌ 新規テスト: disabled prop変更時の音声認識自動停止
+    it('disabled=trueになった時、進行中の音声認識が自動停止される', async () => {
+      const mockStopListening = vi.fn()
+      const mockStartListening = vi.fn().mockResolvedValue(true)
+      const onStateChange = vi.fn()
+      
+      mockUseSpeechRecognition.mockReturnValue({
+        ...defaultMockReturn,
+        isListening: true,  // 音声認識が進行中
+        startListening: mockStartListening,
+        stopListening: mockStopListening
+      })
+      
+      const { rerender } = render(
+        <VoiceInput 
+          onTranscript={mockOnTranscript} 
+          disabled={false}
+          onStateChange={onStateChange}
+        />
+      )
+      
+      // disabled=trueに変更
+      rerender(
+        <VoiceInput 
+          onTranscript={mockOnTranscript} 
+          disabled={true}
+          onStateChange={onStateChange}
+        />
+      )
+      
+      // 音声認識が自動停止されることを確認
+      await waitFor(() => {
+        expect(mockStopListening).toHaveBeenCalled()
+        expect(onStateChange).toHaveBeenCalledWith(false)
+      })
+    })
+
+    // ❌ 新規テスト: disabled=false時の音声認識自動再開
+    it('disabled=falseになった時、前回聞いていた場合は音声認識が自動再開される', async () => {
+      const mockStopListening = vi.fn()
+      const mockStartListening = vi.fn().mockResolvedValue(true)
+      const onStateChange = vi.fn()
+      
+      // 最初は音声認識中
+      mockUseSpeechRecognition.mockReturnValue({
+        ...defaultMockReturn,
+        isListening: true,
+        startListening: mockStartListening,
+        stopListening: mockStopListening
+      })
+      
+      const { rerender } = render(
+        <VoiceInput 
+          onTranscript={mockOnTranscript} 
+          disabled={false}
+          onStateChange={onStateChange}
+        />
+      )
+      
+      // disabled=trueに変更（音声合成開始）
+      rerender(
+        <VoiceInput 
+          onTranscript={mockOnTranscript} 
+          disabled={true}
+          onStateChange={onStateChange}
+        />
+      )
+      
+      // 音声認識停止を確認
+      await waitFor(() => {
+        expect(mockStopListening).toHaveBeenCalled()
+      })
+      
+      // 音声認識が停止状態になったことをモック
+      mockUseSpeechRecognition.mockReturnValue({
+        ...defaultMockReturn,
+        isListening: false,  // 停止状態
+        startListening: mockStartListening,
+        stopListening: mockStopListening
+      })
+      
+      // disabled=falseに変更（音声合成終了）
+      rerender(
+        <VoiceInput 
+          onTranscript={mockOnTranscript} 
+          disabled={false}
+          onStateChange={onStateChange}
+        />
+      )
+      
+      // 音声認識が自動再開されることを確認
+      await waitFor(() => {
+        expect(mockStartListening).toHaveBeenCalled()  // 自動再開された
+        expect(onStateChange).toHaveBeenCalledWith(true)
+      })
+    })
   })
 
   describe('音声認識がサポートされていない場合', () => {
