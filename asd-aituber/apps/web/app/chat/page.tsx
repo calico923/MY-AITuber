@@ -13,6 +13,7 @@ import type { VoicevoxAudioQuery } from '@/lib/voicevox-client'
 import { checkWebGLSupport } from '@/lib/utils/webgl-check'
 import { checkVRMFileExists } from '@/lib/utils/vrm-loader'
 import { checkDependencyCompatibility, getThreeJsVersion, getVRMLibVersion } from '@/lib/utils/dependency-check'
+import { shouldSynthesizeMessage, getSynthesisSkipReason } from '@/lib/speech-message-filter'
 // Removed direct import to avoid webpack chunk issues
 // import { LipSync } from '@/lib/lip-sync'
 
@@ -109,10 +110,11 @@ export default function ChatPage() {
       return
     }
     
-    // 新しいアシスタントメッセージかどうかを確認
+    // アシスタントメッセージに対して感情とセッション制御を適用
     if (lastMessage.role === 'assistant') {
-      console.log('[ChatPage] 新しいアシスタントメッセージを検出しました。音声合成を開始します。')
-      // assistantメッセージの感情を反映
+      console.log('[ChatPage] 新しいアシスタントメッセージを検出しました。')
+      
+      // assistantメッセージの感情を反映（セッションメッセージでも感情は適用）
       if (lastMessage.emotion) {
         setCurrentEmotion(lastMessage.emotion)
       }
@@ -120,6 +122,16 @@ export default function ChatPage() {
       // Priority 1: メッセージを処理済みとしてマーク
       setProcessedMessageIds(prev => new Set(prev).add(lastMessage.id))
       console.log('[ChatPage] メッセージIDを処理済みとしてマークしました:', lastMessage.id)
+      
+      // 🎯 Task 1.3: セッション管理フラグをチェックして音声合成を制御
+      if (!shouldSynthesizeMessage(lastMessage)) {
+        const skipReason = getSynthesisSkipReason(lastMessage)
+        console.log('[ChatPage] 🚫 音声合成をスキップします。理由:', skipReason)
+        // セッションメッセージでも表情は更新するが、音声合成は行わない
+        return
+      }
+      
+      console.log('[ChatPage] ✅ 音声合成を開始します。')
       
       // Priority 2: 音声合成のみを開始（リップシンクは別のuseEffectで同期実行）
       const startVoiceSynthesis = async () => {

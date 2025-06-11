@@ -132,6 +132,26 @@ export function useChat() {
     }
   }, [])
 
+  // Task 3.2: セッションクリア機能（コールバック対応）
+  const clearConversation = useCallback((callback?: () => void) => {
+    try {
+      // メッセージ配列をクリア
+      setMessages([])
+      
+      // セッションをクリア
+      SessionManager.clearSession()
+      
+      console.log('Conversation and session cleared')
+      
+      // コールバックがあれば実行
+      if (callback) {
+        callback()
+      }
+    } catch (error) {
+      console.error('Failed to clear conversation:', error)
+    }
+  }, [])
+
   const changeMode = useCallback((newMode: ASDNTMode) => {
     setMode(newMode)
     
@@ -161,7 +181,9 @@ export function useChat() {
     sendMessage,
     addMessage,
     clearMessages,
+    clearConversation,
     changeMode,
     loadChatHistory,
+    setMessages, // テスト用に公開
   }
 }
