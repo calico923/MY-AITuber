@@ -75,12 +75,57 @@ class DevHttpsManager {
     throw error;
   }
 
+  async checkPortAvailability(port) {
+    const net = require('net');
+    
+    return new Promise((resolve) => {
+      const server = net.createServer();
+      
+      server.listen(port, () => {
+        server.once('close', () => {
+          resolve(true); // Port is available
+        });
+        server.close();
+      });
+      
+      server.on('error', () => {
+        resolve(false); // Port is in use
+      });
+    });
+  }
+
+  async findAvailablePort(startPort = this.httpsPort, maxTries = 10) {
+    for (let i = 0; i < maxTries; i++) {
+      const port = startPort + i;
+      const available = await this.checkPortAvailability(port);
+      
+      if (available) {
+        this.log(`Found available port: ${port}`);
+        return port;
+      } else {
+        this.log(`Port ${port} is in use, trying next...`);
+      }
+    }
+    
+    throw new Error(`No available port found after checking ${maxTries} ports starting from ${startPort}`);
+  }
+
   async startDevServer(options = {}) {
-    const { port = this.httpsPort, useLegacyMode = false } = options;
+    const { port = this.httpsPort, useLegacyMode = false, autoFindPort = true } = options;
     
     try {
       // Ensure certificates exist
       const certs = await this.ensureCertificates();
+      
+      // Check port availability and find alternative if needed
+      let finalPort = port;
+      if (autoFindPort) {
+        const portAvailable = await this.checkPortAvailability(port);
+        if (!portAvailable) {
+          this.log(`Port ${port} is in use, finding alternative...`);
+          finalPort = await this.findAvailablePort(port);
+        }
+      }
       
       // Prepare environment variables
       const env = {
@@ -88,7 +133,7 @@ class DevHttpsManager {
         HTTPS: 'true',
         SSL_CRT_FILE: certs.cert,
         SSL_KEY_FILE: certs.key,
-        PORT: port.toString(),
+        PORT: finalPort.toString(),
       };
 
       // Validate environment
@@ -97,7 +142,7 @@ class DevHttpsManager {
         throw new Error(`Missing environment variables: ${validation.missing.join(', ')}`);
       }
 
-      this.log(`Starting HTTPS development server on port ${port}...`);
+      this.log(`Starting HTTPS development server on port ${finalPort}...`);
       this.log(`Certificate: ${certs.cert}`);
       this.log(`Private Key: ${certs.key}`);
 
@@ -112,7 +157,7 @@ class DevHttpsManager {
       } else {
         // Use Next.js 14+ experimental HTTPS
         command = 'next';
-        args = ['dev', '--experimental-https', '--port', port.toString()];
+        args = ['dev', '--experimental-https', '--port', finalPort.toString()];
         cwd = path.join(this.projectRoot, 'apps', 'web');
       }
 
@@ -155,7 +200,7 @@ class DevHttpsManager {
       // Show success message after a short delay
       setTimeout(() => {
         this.log('HTTPS development server started successfully!');
-        this.log(`🚀 Server running at: ${this.getHttpsUrl(port)}`);
+        this.log(`🚀 Server running at: ${this.getHttpsUrl(finalPort)}`);
         this.log('');
         this.log('Note: You may see a security warning in your browser');
         this.log('This is normal for self-signed certificates in development');

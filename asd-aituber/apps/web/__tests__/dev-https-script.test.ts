@@ -8,15 +8,19 @@ vi.mock('child_process')
 vi.mock('fs')
 
 describe('Development HTTPS Script Tests', () => {
-  const mockSpawn = spawn as any
-  const mockFs = fs as any
+  const mockSpawn = vi.mocked(spawn)
+  const mockFs = vi.mocked(fs)
+  let originalProcessExit: typeof process.exit
 
   beforeEach(() => {
     vi.clearAllMocks()
+    originalProcessExit = process.exit
+    process.exit = vi.fn() as any
   })
 
   afterEach(() => {
     vi.resetModules()
+    process.exit = originalProcessExit
   })
 
   describe('tdd-1.3: dev:https script exists and runs correctly', () => {
@@ -87,7 +91,7 @@ describe('Development HTTPS Script Tests', () => {
         return child
       }
 
-      const process = runDevHttps()
+      const childProcess = runDevHttps()
       
       expect(mockSpawn).toHaveBeenCalledWith(
         'next',

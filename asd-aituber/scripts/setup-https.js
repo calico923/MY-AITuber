@@ -192,6 +192,38 @@ class CertificateManager {
     return { expired: true, daysLeft: 0 };
   }
 
+  async checkPortAvailability(port) {
+    const net = require('net');
+    
+    return new Promise((resolve) => {
+      const server = net.createServer();
+      
+      server.listen(port, () => {
+        server.once('close', () => {
+          resolve(true); // Port is available
+        });
+        server.close();
+      });
+      
+      server.on('error', () => {
+        resolve(false); // Port is in use
+      });
+    });
+  }
+
+  async findAvailablePort(startPort = 3002, maxTries = 10) {
+    for (let i = 0; i < maxTries; i++) {
+      const port = startPort + i;
+      const available = await this.checkPortAvailability(port);
+      
+      if (available) {
+        return port;
+      }
+    }
+    
+    throw new Error(`No available port found after checking ${maxTries} ports starting from ${startPort}`);
+  }
+
   async renewCertificatesIfNeeded(warningDays = 30) {
     const expiry = await this.checkCertificateExpiry();
     
