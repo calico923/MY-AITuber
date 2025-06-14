@@ -381,7 +381,7 @@ export default function ChatPage() {
           <h2 className="text-xl font-bold">ASD-AITuber Chat</h2>
           <div className="text-sm text-gray-500 mt-1">
             Mode: {mode} | Emotion: {currentEmotion}
-            {(isSpeaking || isVoiceSpeaking) && ` | 🔊 Speaking (${currentEngine})`}
+            {isVoiceSpeaking && ` | 🔊 Speaking (${currentEngine})`}
           </div>
         </div>
         
