@@ -231,6 +231,10 @@ export function useUnifiedVoiceSynthesis(
 
     setError(null)
 
+    // 🔧 CRITICAL: 音声合成開始前に即座にマイクを停止してエコーループを防止
+    setIsSpeaking(true)
+    audioManagerRef.current?.setIsSpeaking(true)
+
     const options: UnifiedVoiceOptions = {
       text,
       emotion,
@@ -244,10 +248,8 @@ export function useUnifiedVoiceSynthesis(
         onStart: () => {
           performanceMonitor.startMeasure('voice-synthesis-processing')
           if (isMountedRef.current) {
-            setIsSpeaking(true)
             setError(null)
-            // AudioContextManagerに音声合成開始を通知
-            audioManagerRef.current?.setIsSpeaking(true)
+            // 状態は既にspeak開始時に設定済み
           }
           externalCallbacks.onStart?.()
         },

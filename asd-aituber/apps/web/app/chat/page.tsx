@@ -21,7 +21,8 @@ export default function ChatPage() {
   const { messages, isLoading, sendMessage, mode, changeMode } = useChat()
   const vrmViewerRef = useRef<VRMViewerRef>(null)
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>('neutral')
-  const [isSpeaking, setIsSpeaking] = useState(false)
+  // isSpeaking状態はuseUnifiedVoiceSynthesisから取得
+  // const [isSpeaking, setIsSpeaking] = useState(false) // 削除: isVoiceSpeakingを使用
   // const [mounted, setMounted] = useState(false)  // VRMViewer直接表示のため不要
   // Priority 1: 処理済みメッセージIDを追跡して重複音声再生を防ぐ
   const [processedMessageIds, setProcessedMessageIds] = useState(new Set<string>())
@@ -140,8 +141,7 @@ export default function ChatPage() {
         // 既存の音声を停止
         stopSpeech()
         
-        // 表情を設定
-        setIsSpeaking(true)
+        // 表情設定は音声合成開始時に自動で行われる
         
         // ✅ Task 1.3.2: 30秒タイムアウト保護を設定
         if (micTimeoutRef.current) {
@@ -160,7 +160,7 @@ export default function ChatPage() {
           if (vrmViewerRef.current) {
             vrmViewerRef.current.speakText(lastMessage.content, () => {
               console.log('[ChatPage] フォールバック リップシンク完了')
-              setIsSpeaking(false)
+              // VRMアニメーション終了時の処理のみ
             })
           }
         }, 5000)
@@ -186,7 +186,6 @@ export default function ChatPage() {
                 }
                 setMicTimeoutOverride(false) // タイムアウトオーバーライドをリセット
                 
-                setIsSpeaking(false)
                 // 話し終わったら3秒後に表情をneutralに戻す
                 setTimeout(() => {
                   if (vrmViewerRef.current) {
@@ -206,12 +205,11 @@ export default function ChatPage() {
                 }
                 setMicTimeoutOverride(false)
                 
-                setIsSpeaking(false)
                 // エラー時もフォールバック実行
                 if (vrmViewerRef.current) {
                   vrmViewerRef.current.speakText(lastMessage.content, () => {
                     console.log('[ChatPage] エラー時フォールバック リップシンク完了')
-                    setIsSpeaking(false)
+                    // VRMアニメーション終了時の処理のみ
                   })
                 }
               }
@@ -228,12 +226,11 @@ export default function ChatPage() {
           }
           setMicTimeoutOverride(false)
           
-          setIsSpeaking(false)
           // 例外時もフォールバック実行
           if (vrmViewerRef.current) {
             vrmViewerRef.current.speakText(lastMessage.content, () => {
               console.log('[ChatPage] 例外時フォールバック リップシンク完了')
-              setIsSpeaking(false)
+              // VRMアニメーション終了時の処理のみ
             })
           }
         }
@@ -244,14 +241,14 @@ export default function ChatPage() {
     } else {
       console.log('[ChatPage] Not an assistant message, skipping voice synthesis')
     }
-  }, [messages, processedMessageIds, isInitialized, mode, speakText, stopSpeech, setCurrentEmotion, setIsSpeaking, setProcessedMessageIds, setMicTimeoutOverride])
+  }, [messages, processedMessageIds, isInitialized, mode, speakText, stopSpeech, setCurrentEmotion, setProcessedMessageIds, setMicTimeoutOverride])
 
 
   // ローディング状態に基づいて表情を更新
   useEffect(() => {
     if (isLoading) {
       setCurrentEmotion('neutral')
-      setIsSpeaking(false)
+      // isSpeaking状態はuseUnifiedVoiceSynthesisが管理
       
       // ✅ Task 1.3.2: ローディング時もタイムアウト保護をクリア
       if (micTimeoutRef.current) {
@@ -359,7 +356,7 @@ export default function ChatPage() {
             ref={vrmViewerRef}
             modelUrl="/models/MyAvatar01_20241125134913.vrm"
             emotion={currentEmotion}
-            isSpeaking={isSpeaking}
+            isSpeaking={isVoiceSpeaking}
           />
         ) : (
           <VRMViewerFallback
@@ -402,7 +399,7 @@ export default function ChatPage() {
             messages={messages} 
             onSendMessage={sendMessage}
             isLoading={isLoading}
-            isVoiceDisabled={(isSpeaking || isVoiceSpeaking) && !micTimeoutOverride}
+            isVoiceDisabled={isVoiceSpeaking && !micTimeoutOverride}
           />
         </div>
       </div>
