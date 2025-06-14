@@ -5,6 +5,9 @@
 
 import { createTimeoutSignal } from './browser-compat'
 
+// Constants
+const MAX_VRM_FILE_SIZE = 100 * 1024 * 1024 // 100MB limit for mobile memory constraints
+
 export interface VRMFileInfo {
   exists: boolean
   size?: number
@@ -129,8 +132,8 @@ export async function preloadVRMFile(url: string): Promise<boolean> {
       return false
     }
 
-    // ファイルサイズチェック（100MB制限）
-    if (info.size && info.size > 100 * 1024 * 1024) {
+    // ファイルサイズチェック
+    if (info.size && info.size > MAX_VRM_FILE_SIZE) {
       console.warn('VRM file is too large:', info.size, 'bytes')
       return false
     }

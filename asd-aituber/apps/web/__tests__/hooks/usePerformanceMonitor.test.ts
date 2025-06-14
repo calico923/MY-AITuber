@@ -360,7 +360,8 @@ describe('usePerformanceMonitor Hook Tests', () => {
   describe('Edge cases and error handling', () => {
     it('should handle missing Performance API gracefully', () => {
       const originalPerformance = global.performance
-      delete (global as any).performance
+      // Use undefined assignment instead of delete for better performance
+      ;(global as any).performance = undefined
       
       const { result } = renderHook(() => usePerformanceMonitor())
       

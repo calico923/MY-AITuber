@@ -86,20 +86,28 @@ export class AudioContextManager {
     const prevState = this.isSpeaking
     this.isSpeaking = speaking
     
-    console.log(`[AudioContextManager] Speech state changed: ${prevState} → ${speaking}`)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[AudioContextManager] Speech state changed: ${prevState} → ${speaking}`)
+    }
     
     if (speaking) {
       // 既存の再開タイマーをキャンセル
       this.clearRestartTimer()
       
       // 音声合成開始: 即座にマイク停止
-      console.log('[AudioContextManager] 🔇 Starting speech synthesis - stopping voice input')
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[AudioContextManager] 🔇 Starting speech synthesis - stopping voice input')
+      }
       this.voiceInputRef?.forceStop()
     } else {
       // 音声合成終了: 300ms後にマイク再開
-      console.log('[AudioContextManager] 🔊 Speech synthesis ended')
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[AudioContextManager] 🔊 Speech synthesis ended')
+      }
       this.restartTimerId = setTimeout(() => {
-        console.log('[AudioContextManager] ⏰ 300ms delay completed - restarting voice input')
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[AudioContextManager] ⏰ 300ms delay completed - restarting voice input')
+        }
         this.voiceInputRef?.autoRestart()
         this.restartTimerId = null
       }, 300)
