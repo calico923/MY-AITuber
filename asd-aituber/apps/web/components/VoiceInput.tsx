@@ -5,6 +5,11 @@ import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { diagnoseNetworkEnvironment } from '@/lib/speech-recognition'
 import { debugSpeechAPI, explainWebSpeechAPIAuth } from '@/lib/speech-debug'
 import { AudioContextManager } from '@/libs/audio-context-manager'
+import { 
+  MicrophonePermissionManager,
+  type MicrophonePermissionStatus,
+  type BrowserInfo 
+} from '@/lib/microphone-permission-manager'
 
 interface VoiceInputProps {
   onTranscript: (transcript: string) => void
@@ -40,6 +45,10 @@ export default function VoiceInput({
   // AudioContextManager統合用の状態
   const [isSpeaking, setIsSpeaking] = useState(false)
   const audioManagerRef = useRef<AudioContextManager | null>(null)
+  
+  // MicrophonePermissionManager統合用の状態
+  const [permissionStatus, setPermissionStatus] = useState<MicrophonePermissionStatus | null>(null)
+  const [permissionBrowserInfo, setPermissionBrowserInfo] = useState<BrowserInfo | null>(null)
 
   const {
     isSupported,
@@ -55,6 +64,7 @@ export default function VoiceInput({
     requestPermission,
     clearError,
     clearTranscript,
+    retryStatus,
     browserInfo
   } = useSpeechRecognition({
     language: 'ja-JP',
@@ -73,6 +83,10 @@ export default function VoiceInput({
     onError: (errorMessage) => {
       console.error('Voice input error:', errorMessage)
       setIsActive(false)
+      
+      // MicrophonePermissionManagerのエラーハンドリングを活用
+      MicrophonePermissionManager.showErrorToast(errorMessage)
+      
       // ネットワークエラーが続く場合は音声認識を完全に停止
       if (errorMessage.includes('ネットワークエラーが続いています')) {
         stopListening()
@@ -94,6 +108,29 @@ export default function VoiceInput({
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
+  }, [])
+
+  // MicrophonePermissionManager統合
+  useEffect(() => {
+    const initializePermissionManager = async () => {
+      try {
+        // ブラウザ情報を取得
+        const browser = MicrophonePermissionManager.getBrowserInfo()
+        setPermissionBrowserInfo(browser)
+        
+        // 権限状態をチェック
+        const status = await MicrophonePermissionManager.checkAndAssist()
+        setPermissionStatus(status)
+        
+      } catch (error) {
+        console.error('[VoiceInput] Permission manager initialization failed:', error)
+        MicrophonePermissionManager.showErrorToast(
+          error instanceof Error ? error.message : 'Unknown permission error'
+        )
+      }
+    }
+    
+    initializePermissionManager()
   }, [])
 
   // AudioContextManager統合 - 最適化されたエラーハンドリング付き
@@ -300,9 +337,27 @@ export default function VoiceInput({
 
   // 権限要求
   const handleRequestPermission = async () => {
-    const granted = await requestPermission()
-    if (granted) {
-      setShowPermissionRequest(false)
+    try {
+      // 既存のhookの権限要求を使用
+      const granted = await requestPermission()
+      
+      if (granted) {
+        setShowPermissionRequest(false)
+        // 権限取得後、権限状態を更新
+        const status = await MicrophonePermissionManager.checkPermissionStatus()
+        setPermissionStatus(status)
+      } else {
+        // 権限拒否時の詳細なエラーハンドリング
+        if (permissionBrowserInfo) {
+          const recovery = MicrophonePermissionManager.getRecoveryInstructions('Permission denied')
+          MicrophonePermissionManager.showErrorToast('NotAllowedError: Permission denied')
+        }
+      }
+    } catch (error) {
+      console.error('Permission request failed:', error)
+      MicrophonePermissionManager.showErrorToast(
+        error instanceof Error ? error.message : 'Permission request failed'
+      )
     }
   }
 
@@ -402,22 +457,71 @@ ${highPriorityIssues.length > 0 ?
 
   // 権限要求
   if (showPermissionRequest) {
+    const browserSpecificMessage = permissionBrowserInfo ? permissionStatus?.recommendedAction || 
+      `${permissionBrowserInfo.name}でのマイク権限を許可してください` : 
+      '音声入力を使用するには、マイクロフォンへのアクセスを許可してください。'
+    
     return (
       <div className={`p-4 border rounded-lg bg-blue-50 border-blue-200 ${className}`}>
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <span className="text-blue-600">🎤</span>
-            <p className="text-sm font-medium text-blue-800">マイクロフォンの権限が必要です</p>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-blue-800">マイクロフォンの権限が必要です</p>
+              {permissionBrowserInfo && (
+                <p className="text-xs text-blue-500 mt-1">
+                  検出されたブラウザ: {permissionBrowserInfo.name} {permissionBrowserInfo.version}
+                </p>
+              )}
+            </div>
           </div>
+          
           <p className="text-xs text-blue-600">
-            音声入力を使用するには、マイクロフォンへのアクセスを許可してください。
+            {browserSpecificMessage}
           </p>
-          <button
-            onClick={handleRequestPermission}
-            className="w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            権限を許可
-          </button>
+          
+          {permissionBrowserInfo && !permissionBrowserInfo.microphoneQuerySupported && (
+            <div className="p-2 bg-yellow-100 rounded text-xs text-yellow-800">
+              <p className="font-medium">🔔 {permissionBrowserInfo.name}での注意事項:</p>
+              <p>このブラウザでは、マイクボタンをクリック時に権限ダイアログが表示されます。</p>
+            </div>
+          )}
+          
+          {permissionBrowserInfo && permissionBrowserInfo.requiresHTTPS && location.protocol !== 'https:' && (
+            <div className="p-2 bg-red-100 rounded text-xs text-red-800">
+              <p className="font-medium">🔒 セキュリティ要件:</p>
+              <p>HTTPS接続が必要です。https://localhost:3002 でアクセスしてください。</p>
+            </div>
+          )}
+          
+          <div className="flex gap-2">
+            <button
+              onClick={handleRequestPermission}
+              className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              権限を許可
+            </button>
+            
+            {permissionBrowserInfo && (
+              <button
+                onClick={() => {
+                  const recovery = MicrophonePermissionManager.getRecoveryInstructions('権限設定')
+                  alert(`
+【${recovery.browserName}での詳細手順】
+
+🔧 権限許可の手順:
+${recovery.instructions.map(step => `• ${step}`).join('\n')}
+
+💡 トラブルシューティング:
+${recovery.troubleshooting?.map(step => `• ${step}`).join('\n') || 'なし'}
+                  `.trim())
+                }}
+                className="px-3 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                詳細手順
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -561,10 +665,34 @@ ${highPriorityIssues.length > 0 ?
         </div>
       </div>
 
+      {/* Auto-retry 状態表示 */}
+      {retryStatus.hasActiveTimer && (
+        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center gap-2">
+            <span className="text-yellow-500">🔄</span>
+            <div className="flex-1">
+              <p className="text-sm text-yellow-800">
+                自動リトライ中... ({retryStatus.retryCount}/{retryStatus.maxRetries})
+              </p>
+              <p className="text-xs text-yellow-600">
+                理由: {retryStatus.lastRetryReason} | 残り: {retryStatus.remainingRetries}回
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 使用方法のヒント */}
-      {!isListening && hasPermission && !error && (
+      {!isListening && hasPermission && !error && !retryStatus.hasActiveTimer && (
         <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
           💡 マイクボタンを押して話すと、音声が文字に変換されます。話し終わったら再度ボタンを押してください。
+        </div>
+      )}
+      
+      {/* リトライ情報（デバッグ用） */}
+      {retryStatus.retryCount > 0 && !retryStatus.hasActiveTimer && (
+        <div className="text-xs text-gray-400 bg-gray-50 p-2 rounded">
+          🔄 自動リトライ履歴: {retryStatus.retryCount}回実行済み (最終理由: {retryStatus.lastRetryReason})
         </div>
       )}
     </div>

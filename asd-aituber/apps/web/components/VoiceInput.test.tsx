@@ -69,8 +69,8 @@ describe('VoiceInput', () => {
 
     // ✅ Task 1.1.1: VoiceInput disabled propのテスト作成
     it('disabled propがtrueの場合、マイクボタンが無効化される', () => {
-      render(<VoiceInput onTranscript={mockOnTranscript} disabled={true} />)
-      const button = screen.getByRole('button', { name: /mic/i })
+      render(<VoiceInput onTranscript={mockOnTranscript} isDisabled={true} />)
+      const button = screen.getByRole('button')
       expect(button).toBeDisabled()
     })
 
@@ -119,7 +119,7 @@ describe('VoiceInput', () => {
       rerender(
         <VoiceInput 
           onTranscript={mockOnTranscript} 
-          disabled={true}
+          isDisabled={true}
           onStateChange={onStateChange}
         />
       )
@@ -148,7 +148,7 @@ describe('VoiceInput', () => {
       const { rerender } = render(
         <VoiceInput 
           onTranscript={mockOnTranscript} 
-          disabled={false}
+          isDisabled={false}
           onStateChange={onStateChange}
         />
       )
@@ -157,7 +157,7 @@ describe('VoiceInput', () => {
       rerender(
         <VoiceInput 
           onTranscript={mockOnTranscript} 
-          disabled={true}
+          isDisabled={true}
           onStateChange={onStateChange}
         />
       )

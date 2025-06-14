@@ -43,14 +43,18 @@ if [ ! -f .env ]; then
     echo "⚠️  .envファイルを編集してAPIキーを設定してください"
 fi
 
-# 7. VOICEVOXのチェック
+# 7. HTTPS証明書のセットアップ
+echo "🔒 HTTPS証明書をセットアップしています..."
+node scripts/setup-https.js
+
+# 8. VOICEVOXのチェック
 echo "🎤 VOICEVOXの確認..."
 if ! curl -s http://localhost:50021/version > /dev/null; then
     echo "⚠️  VOICEVOXが起動していません。"
     echo "   https://voicevox.hiroshiba.jp/ からダウンロードして起動してください。"
 fi
 
-# 8. Git hooks のセットアップ
+# 9. Git hooks のセットアップ
 if [ -d .git ]; then
     echo "🔗 Git hooksをセットアップしています..."
     # pre-commit hook
@@ -66,4 +70,6 @@ echo ""
 echo "次のステップ:"
 echo "1. .envファイルを編集してAPIキーを設定"
 echo "2. VOICEVOXを起動"
-echo "3. 'pnpm dev' で開発サーバーを起動"
+echo "3. HTTP版: 'pnpm dev' で開発サーバーを起動"
+echo "4. HTTPS版: 'pnpm dev:https' でHTTPS開発サーバーを起動"
+echo "   (音声認識機能にはHTTPS版が必要です)"

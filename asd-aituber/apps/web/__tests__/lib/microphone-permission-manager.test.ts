@@ -94,7 +94,11 @@ describe('MicrophonePermissionManager', () => {
 
   test('Permissions APIが利用不可の場合、getUserMediaにフォールバック - 成功', async () => {
     // Permissions APIを無効化
-    delete global.navigator.permissions
+    Object.defineProperty(global.navigator, 'permissions', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
     
     const mockStream = {
       getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }])
@@ -113,7 +117,11 @@ describe('MicrophonePermissionManager', () => {
   })
 
   test('Permissions APIが利用不可の場合、getUserMediaにフォールバック - 失敗', async () => {
-    delete global.navigator.permissions
+    Object.defineProperty(global.navigator, 'permissions', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
     
     mockGetUserMedia.mockRejectedValue(new Error('Permission denied'))
     
@@ -127,8 +135,16 @@ describe('MicrophonePermissionManager', () => {
   })
 
   test('mediaDevicesが利用不可の場合、適切にハンドリング', async () => {
-    delete global.navigator.permissions
-    delete global.navigator.mediaDevices
+    Object.defineProperty(global.navigator, 'permissions', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
     
     const status = await MicrophonePermissionManager.checkPermissionStatus()
     
@@ -237,7 +253,11 @@ describe('MicrophonePermissionManager', () => {
     })
 
     test('testMicrophoneAccess - mediaDevicesが利用不可の場合', async () => {
-      delete global.navigator.mediaDevices
+      Object.defineProperty(global.navigator, 'mediaDevices', {
+        value: undefined,
+        writable: true,
+        configurable: true
+      })
       
       const result = await MicrophonePermissionManager.testMicrophoneAccess()
       

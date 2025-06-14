@@ -103,9 +103,17 @@ describe('AudioContextManager Emergency Stop', () => {
     const originalDocument = global.document
     
     // @ts-expect-error Testing undefined globals
-    delete global.speechSynthesis
+    Object.defineProperty(global, 'speechSynthesis', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
     // @ts-expect-error Testing undefined globals
-    delete global.document
+    Object.defineProperty(global, 'document', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
     
     const manager = AudioContextManager.getInstance()
     

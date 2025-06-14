@@ -16,7 +16,11 @@ Object.defineProperty(window, 'location', {
 describe('isDevelopmentEnvironment', () => {
   beforeEach(() => {
     // Reset environment
-    delete process.env.NODE_ENV
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
   })
 
   test('localhost環境をtrueと判定', () => {
@@ -86,7 +90,11 @@ describe('isDevelopmentEnvironment', () => {
   test('window未定義（SSR環境）の場合はNODE_ENVベースで判定', () => {
     const originalWindow = global.window
     // @ts-ignore
-    delete global.window
+    Object.defineProperty(global, 'window', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
     
     process.env.NODE_ENV = 'development'
     expect(isDevelopmentEnvironment()).toBe(true)

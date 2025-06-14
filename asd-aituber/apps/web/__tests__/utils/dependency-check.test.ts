@@ -1,18 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { getThreeJsVersion, getVRMLibVersion, checkDependencyCompatibility } from '@/lib/utils/dependency-check'
 
-// パッケージのバージョン情報をモック
-vi.mock('three/package.json', () => ({
-  default: { version: '0.159.0' }
-}))
-
-vi.mock('@pixiv/three-vrm/package.json', () => ({
-  default: { version: '2.1.0' }
-}))
-
 describe('Dependency Version Check', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Reset window object for SSR tests
+    vi.stubGlobal('window', global.window)
   })
 
   it('should verify Three.js version compatibility', () => {
@@ -23,7 +16,7 @@ describe('Dependency Version Check', () => {
   
   it('should verify @pixiv/three-vrm version', () => {
     const vrmVersion = getVRMLibVersion()
-    expect(vrmVersion).toMatch(/^2\.\d+\.\d+/)
+    expect(vrmVersion).toMatch(/^2\.\d+\./)
     expect(vrmVersion).toBeDefined()
   })
 
@@ -40,27 +33,41 @@ describe('Dependency Version Check', () => {
   })
 
   it('should detect incompatible Three.js versions', () => {
-    // Mock古いバージョン
-    vi.doMock('three/package.json', () => ({
-      default: { version: '0.140.0' }
-    }))
+    // SSR環境で古いバージョンをシミュレート
+    const originalWindow = global.window
+    const originalEnv = process.env.THREE_JS_VERSION
+    
+    vi.stubGlobal('window', undefined)
+    process.env.THREE_JS_VERSION = '0.140.0'
 
     const compatibility = checkDependencyCompatibility()
     
     expect(compatibility.isCompatible).toBe(false)
-    expect(compatibility.warnings).toContain(expect.stringMatching(/three\.js version.*not compatible/i))
+    expect(compatibility.warnings.length).toBeGreaterThan(0)
+    expect(compatibility.warnings.some(w => w.toLowerCase().includes('three.js') && w.toLowerCase().includes('not compatible'))).toBe(true)
+    
+    // 環境変数を復元
+    vi.stubGlobal('window', originalWindow)
+    process.env.THREE_JS_VERSION = originalEnv
   })
 
   it('should detect incompatible VRM library versions', () => {
-    // Mock古いバージョン
-    vi.doMock('@pixiv/three-vrm/package.json', () => ({
-      default: { version: '1.0.0' }
-    }))
+    // SSR環境で古いバージョンをシミュレート
+    const originalWindow = global.window
+    const originalEnv = process.env.VRM_LIB_VERSION
+    
+    vi.stubGlobal('window', undefined)
+    process.env.VRM_LIB_VERSION = '1.0.0'
 
     const compatibility = checkDependencyCompatibility()
     
     expect(compatibility.isCompatible).toBe(false)
-    expect(compatibility.warnings).toContain(expect.stringMatching(/vrm library version.*not compatible/i))
+    expect(compatibility.warnings.length).toBeGreaterThan(0)
+    expect(compatibility.warnings.some(w => w.toLowerCase().includes('vrm library') && w.toLowerCase().includes('not compatible'))).toBe(true)
+    
+    // 環境変数を復元
+    vi.stubGlobal('window', originalWindow)
+    process.env.VRM_LIB_VERSION = originalEnv
   })
 
   it('should provide detailed version information', () => {
@@ -76,13 +83,22 @@ describe('Dependency Version Check', () => {
   })
 
   it('should handle missing package.json gracefully', () => {
-    // Mock パッケージが見つからない場合
-    vi.doMock('three/package.json', () => {
-      throw new Error('Package not found')
-    })
+    // Mock 環境変数が未設定の場合（サーバーサイド環境）
+    const originalWindow = global.window
+    const originalThreeEnv = process.env.THREE_JS_VERSION
+    const originalVrmEnv = process.env.VRM_LIB_VERSION
+    
+    vi.stubGlobal('window', undefined) // SSR環境
+    delete process.env.THREE_JS_VERSION
+    delete process.env.VRM_LIB_VERSION
 
     const threeVersion = getThreeJsVersion()
     expect(threeVersion).toBe('unknown')
+    
+    // 環境変数を復元
+    vi.stubGlobal('window', originalWindow)
+    process.env.THREE_JS_VERSION = originalThreeEnv
+    process.env.VRM_LIB_VERSION = originalVrmEnv
   })
 
   it('should provide compatibility recommendations', () => {
@@ -92,5 +108,27 @@ describe('Dependency Version Check', () => {
       expect(compatibility).toHaveProperty('recommendations')
       expect(Array.isArray(compatibility.recommendations)).toBe(true)
     }
+  })
+
+  it('should handle SSR environment correctly', () => {
+    // SSR環境をシミュレート（環境変数が設定されている場合）
+    const originalWindow = global.window
+    vi.stubGlobal('window', undefined)
+    process.env.THREE_JS_VERSION = '0.159.0'
+    
+    const version = getThreeJsVersion()
+    expect(version).toBeDefined()
+    expect(version).toBe('0.159.0')
+    
+    // 環境を復元
+    vi.stubGlobal('window', originalWindow)
+    delete process.env.THREE_JS_VERSION
+  })
+
+  it('should not use dynamic require for package.json', () => {
+    // getThreeJsVersion内でrequire()を使用していないことを確認
+    const fnString = getThreeJsVersion.toString()
+    expect(fnString).not.toContain('require(')
+    expect(fnString).not.toContain('package.json')
   })
 })

@@ -60,8 +60,16 @@ describe('SpeechRecognitionManager', () => {
   })
 
   afterEach(() => {
-    delete (window as any).SpeechRecognition
-    delete (window as any).webkitSpeechRecognition
+    Object.defineProperty(window, 'SpeechRecognition', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
+    Object.defineProperty(window, 'webkitSpeechRecognition', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
   })
 
   describe('初期化', () => {
@@ -73,8 +81,16 @@ describe('SpeechRecognitionManager', () => {
     })
 
     it('非対応ブラウザでは対応状況がfalseになる', () => {
-      delete (window as any).SpeechRecognition
-      delete (window as any).webkitSpeechRecognition
+      Object.defineProperty(window, 'SpeechRecognition', {
+        value: undefined,
+        writable: true,
+        configurable: true
+      })
+      Object.defineProperty(window, 'webkitSpeechRecognition', {
+        value: undefined,
+        writable: true,
+        configurable: true
+      })
       
       const manager = new SpeechRecognitionManager()
       
@@ -285,8 +301,16 @@ describe('checkSpeechRecognitionSupport', () => {
     Object.defineProperty(navigator, 'userAgent', {
       value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
     })
-    delete (window as any).SpeechRecognition
-    delete (window as any).webkitSpeechRecognition
+    Object.defineProperty(window, 'SpeechRecognition', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
+    Object.defineProperty(window, 'webkitSpeechRecognition', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
     
     const result = checkSpeechRecognitionSupport()
     

@@ -18,7 +18,11 @@ describe('VRM Loader Hotfix', () => {
 
     // timeoutメソッドを削除してテスト
     const original = (AbortSignal as any).timeout
-    delete (AbortSignal as any).timeout
+    Object.defineProperty(AbortSignal, 'timeout', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
     
     const result = await checkVRMFileExists('/models/test.vrm')
     expect(result).toBeDefined()
@@ -51,7 +55,11 @@ describe('VRM Loader Hotfix', () => {
 
     // timeoutメソッドを削除
     const original = (AbortSignal as any).timeout
-    delete (AbortSignal as any).timeout
+    Object.defineProperty(AbortSignal, 'timeout', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
     
     const startTime = Date.now()
     const result = await checkVRMFileExists('/models/slow.vrm')
@@ -87,7 +95,11 @@ describe('VRM Loader Hotfix', () => {
   it('should handle network errors gracefully with fallback', async () => {
     // timeoutメソッドを削除
     const original = (AbortSignal as any).timeout
-    delete (AbortSignal as any).timeout
+    Object.defineProperty(AbortSignal, 'timeout', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
 
     // Mock network error
     vi.mocked(fetch).mockRejectedValueOnce(new Error('Network error'))
@@ -104,7 +116,11 @@ describe('VRM Loader Hotfix', () => {
   it('should work with getVRMFileInfo fallback implementation', async () => {
     // timeoutメソッドを削除
     const original = (AbortSignal as any).timeout
-    delete (AbortSignal as any).timeout
+    Object.defineProperty(AbortSignal, 'timeout', {
+      value: undefined,
+      writable: true,
+      configurable: true
+    })
 
     // Mock successful response with headers
     vi.mocked(fetch).mockResolvedValueOnce({

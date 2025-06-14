@@ -20,24 +20,20 @@ export function useAudioPlaybackState(audio: HTMLAudioElement | null) {
 
     // イベントハンドラー定義
     const handlePlay = () => {
-      console.log('[useAudioPlaybackState] 🔊 音声再生開始')
       setIsPlaying(true)
       setError(null)  // エラーをクリア
     }
 
     const handleEnded = () => {
-      console.log('[useAudioPlaybackState] 🔇 音声再生終了')
       setIsPlaying(false)
     }
 
     const handlePause = () => {
-      console.log('[useAudioPlaybackState] ⏸️ 音声一時停止')
       setIsPlaying(false)
     }
 
     const handleError = (event: Event) => {
       const errorMessage = 'Audio playback error occurred'
-      console.error('[useAudioPlaybackState] ❌ 音声再生エラー:', event)
       setIsPlaying(false)
       setError(errorMessage)
     }

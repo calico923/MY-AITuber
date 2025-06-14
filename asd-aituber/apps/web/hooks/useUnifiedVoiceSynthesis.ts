@@ -283,9 +283,6 @@ export function useUnifiedVoiceSynthesis(
         return false
       }
       
-      // AudioContextManagerに音声合成開始を通知
-      audioManagerRef.current?.setIsSpeaking(true)
-      
       const result = await synthesizerRef.current.speak(options)
       
       // 成功・失敗に関わらず、finally節で状態をリセット
@@ -319,7 +316,9 @@ export function useUnifiedVoiceSynthesis(
   const stop = useCallback(() => {
     synthesizerRef.current?.stop()
     setIsSpeaking(false)
-    // AudioContextManagerのemergencyStopを呼び出し
+    // AudioContextManagerに状態リセットを通知
+    audioManagerRef.current?.setIsSpeaking(false)
+    // Emergency stop for downstream consumers
     audioManagerRef.current?.emergencyStop()
   }, [])
 

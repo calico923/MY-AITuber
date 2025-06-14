@@ -21,6 +21,13 @@ export class VRMAnimationController {
   // ✅ AudioLipSync integration for real-time audio analysis
   private audioLipSync: AudioLipSync | null = null
   
+  // Performance optimization: Expression caching
+  private readonly availableExpressions = new Map<string, boolean>()
+  private expressionsInitialized = false
+  
+  // Debug control
+  private static DEBUG_ENABLED = process.env.NODE_ENV === 'development'
+  
   // アニメーション設定
   private readonly blinkInterval = { min: 1000, max: 5000 } // ms
   private readonly blinkDuration = 150 // ms
@@ -40,16 +47,63 @@ export class VRMAnimationController {
     this.scheduleNextBlink()
     this.setInitialPose()
     
+    // 表情キャッシュを初期化
+    this.initializeExpressionCache()
+    
     // リップシンクを初期化
     this.lipSync = new LipSync()
     
     // ✅ AudioLipSync初期化（aituber-kit方式）
     try {
       this.audioLipSync = new AudioLipSync()
+      if (VRMAnimationController.DEBUG_ENABLED) {
+        console.log('[VRMAnimationController] AudioLipSync initialized successfully')
+      }
     } catch (error) {
       console.warn('[VRMAnimationController] AudioLipSync initialization failed, using fallback:', error)
       this.audioLipSync = null
     }
+  }
+  
+  /**
+   * Performance optimization: 利用可能な表情をキャッシュ
+   */
+  private initializeExpressionCache(): void {
+    if (this.expressionsInitialized) return
+    
+    const expressionManager = this.vrm.expressionManager
+    if (!expressionManager) return
+    
+    // 基本表情のチェック
+    const basicExpressions = [
+      'happy', 'sad', 'angry', 'surprised', 'relaxed', 'neutral',
+      'blink', 'blinkLeft', 'blinkRight',
+      'aa', 'ih', 'ou', 'ee', 'oh', // 母音
+    ]
+    
+    basicExpressions.forEach(expression => {
+      const preset = expressionManager.getExpressionTrackIndex(expression)
+      this.availableExpressions.set(expression, preset !== -1)
+    })
+    
+    this.expressionsInitialized = true
+    
+    if (VRMAnimationController.DEBUG_ENABLED) {
+      const available = Array.from(this.availableExpressions.entries())
+        .filter(([_, exists]) => exists)
+        .map(([name, _]) => name)
+      console.log('[VRMAnimationController] Available expressions cached:', available)
+    }
+  }
+  
+  /**
+   * Performance optimization: 表情が利用可能かチェック（キャッシュ使用）
+   */
+  private hasExpression(name: string): boolean {
+    if (!this.expressionsInitialized) {
+      this.initializeExpressionCache()
+    }
+    return this.availableExpressions.get(name) === true
   }
 
   /**
@@ -412,23 +466,29 @@ export class VRMAnimationController {
   }
 
   /**
-   * 口の形を設定
+   * 口の形を設定 (Performance optimized)
    * @param phoneme - 音韻（a, i, u, e, o, silence）
    * @param intensity - 強度（0-1）
    */
   private setMouthShape(phoneme: string, intensity: number): void {
     const expressionManager = this.vrm.expressionManager
     if (!expressionManager) {
-      console.warn('[VRMAnimationController] No expression manager available')
+      if (VRMAnimationController.DEBUG_ENABLED) {
+        console.warn('[VRMAnimationController] No expression manager available')
+      }
       return
     }
 
-    console.log(`[VRMAnimationController] setMouthShape: ${phoneme}, intensity: ${intensity.toFixed(2)}`)
+    if (VRMAnimationController.DEBUG_ENABLED) {
+      console.log(`[VRMAnimationController] setMouthShape: ${phoneme}, intensity: ${intensity.toFixed(2)}`)
+    }
 
-    // 利用可能な表情を確認（初回のみログ出力）
+    // 利用可能な表情を確認（初回のみ）
     if (this.vowelExpressionInfo === undefined) {
       this.vowelExpressionInfo = this.checkVowelExpressions()
-      console.log('[VRMAnimationController] Mouth expressions:', this.vowelExpressionInfo)
+      if (VRMAnimationController.DEBUG_ENABLED) {
+        console.log('[VRMAnimationController] Mouth expressions:', this.vowelExpressionInfo)
+      }
     }
     
     if (this.vowelExpressionInfo.type !== 'none') {
@@ -1150,5 +1210,32 @@ export class VRMAnimationController {
     console.log('[VRMAnimationController] Available legacy vowel expressions:', availableLegacyVowels)
 
     return expressions
+  }
+  
+  /**
+   * リソースのクリーンアップ
+   */
+  destroy(): void {
+    // アニメーションの停止
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId)
+      this.animationId = null
+    }
+    
+    // AudioLipSyncのクリーンアップ
+    if (this.audioLipSync) {
+      this.audioLipSync.destroy()
+      this.audioLipSync = null
+    }
+    
+    // LipSyncのクリーンアップ
+    this.lipSync.destroy()
+    
+    // 話している状態をリセット
+    this.isSpeaking = false
+    
+    if (VRMAnimationController.DEBUG_ENABLED) {
+      console.log('[VRMAnimationController] Resources cleaned up')
+    }
   }
 }

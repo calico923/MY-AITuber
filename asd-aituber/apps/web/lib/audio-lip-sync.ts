@@ -9,8 +9,19 @@ export class AudioLipSync {
   public readonly timeDomainData: Float32Array
   private currentSource: AudioBufferSourceNode | null = null
   private isPlaying: boolean = false
+  private activeSources: Set<AudioBufferSourceNode> = new Set()
+  
+  // Performance monitoring
+  private static instances = new Set<AudioLipSync>()
+  private static readonly MAX_INSTANCES = 5
+  private static DEBUG_ENABLED = process.env.NODE_ENV === 'development'
 
   constructor() {
+    // Performance monitoring: Check instance count
+    if (AudioLipSync.instances.size >= AudioLipSync.MAX_INSTANCES) {
+      console.warn(`[AudioLipSync] Warning: ${AudioLipSync.instances.size} instances already exist. Consider reusing instances.`)
+    }
+    
     // ✅ Phase 1.2: Enhanced AudioContext initialization with error handling
     this.audioContext = this.initializeAudioContext()
     
@@ -22,7 +33,13 @@ export class AudioLipSync {
     // Create buffer for time domain data
     this.timeDomainData = new Float32Array(this.analyser.fftSize)
     
-    console.log('[AudioLipSync] Initialized with AudioContext state:', this.audioContext.state)
+    // Register this instance
+    AudioLipSync.instances.add(this)
+    
+    if (AudioLipSync.DEBUG_ENABLED) {
+      console.log('[AudioLipSync] Initialized with AudioContext state:', this.audioContext.state)
+      console.log(`[AudioLipSync] Total instances: ${AudioLipSync.instances.size}`)
+    }
   }
 
   /**
@@ -142,7 +159,7 @@ export class AudioLipSync {
   }
 
   /**
-   * Play audio with real-time lip sync analysis
+   * Play audio with real-time lip sync analysis (Memory optimized)
    */
   async playWithLipSync(arrayBuffer: ArrayBuffer): Promise<void> {
     try {
@@ -159,16 +176,28 @@ export class AudioLipSync {
       
       // Create and setup source
       this.currentSource = this.createBufferSource(audioBuffer)
+      this.activeSources.add(this.currentSource)
       
-      // Setup event handlers
+      // Setup event handlers with cleanup
       this.currentSource.onended = () => {
         this.isPlaying = false
-        this.currentSource = null
+        if (this.currentSource) {
+          this.activeSources.delete(this.currentSource)
+          this.currentSource = null
+        }
+        
+        if (AudioLipSync.DEBUG_ENABLED) {
+          console.log(`[AudioLipSync] Playback ended. Active sources: ${this.activeSources.size}`)
+        }
       }
       
       // Start playback
       this.currentSource.start()
       this.isPlaying = true
+      
+      if (AudioLipSync.DEBUG_ENABLED) {
+        console.log(`[AudioLipSync] Started playback. Active sources: ${this.activeSources.size}`)
+      }
       
     } catch (error) {
       console.error('AudioLipSync playback failed:', error)
@@ -179,18 +208,23 @@ export class AudioLipSync {
   }
 
   /**
-   * Stop current audio playback
+   * Stop current audio playback (Memory optimized)
    */
   stop(): void {
     if (this.currentSource) {
       try {
         this.currentSource.stop()
+        this.activeSources.delete(this.currentSource)
       } catch (error) {
         // Ignore InvalidStateError from stopping already stopped source
       }
       this.currentSource = null
     }
     this.isPlaying = false
+    
+    if (AudioLipSync.DEBUG_ENABLED) {
+      console.log(`[AudioLipSync] Stopped playback. Active sources: ${this.activeSources.size}`)
+    }
   }
 
   /**
@@ -210,13 +244,44 @@ export class AudioLipSync {
   }
 
   /**
-   * Cleanup resources
+   * Cleanup resources (Enhanced memory management)
    */
   destroy(): void {
     this.stop()
     
+    // Clean up all active sources
+    this.activeSources.forEach(source => {
+      try {
+        source.stop()
+        source.disconnect()
+      } catch (error) {
+        // Ignore errors from already stopped sources
+      }
+    })
+    this.activeSources.clear()
+    
+    // Close AudioContext
     if (this.audioContext.state !== 'closed') {
       this.audioContext.close()
     }
+    
+    // Remove from instance tracking
+    AudioLipSync.instances.delete(this)
+    
+    if (AudioLipSync.DEBUG_ENABLED) {
+      console.log(`[AudioLipSync] Destroyed. Remaining instances: ${AudioLipSync.instances.size}`)
+    }
   }
+  
+  /**
+   * Get performance metrics
+   */
+  static getPerformanceMetrics() {
+    return {
+      totalInstances: AudioLipSync.instances.size,
+      maxInstances: AudioLipSync.MAX_INSTANCES,
+      healthCheck: AudioLipSync.instances.size <= AudioLipSync.MAX_INSTANCES
+    }
+  }
+}
 }

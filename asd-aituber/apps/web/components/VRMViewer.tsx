@@ -279,13 +279,43 @@ const VRMViewer = forwardRef<VRMViewerRef, VRMViewerProps>(
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize)
+      
+      // VRMAnimationController のクリーンアップ
+      if (animationControllerRef.current) {
+        animationControllerRef.current.destroy()
+        animationControllerRef.current = null
+      }
+      
+      // VRM のクリーンアップ
+      if (vrmRef.current) {
+        vrmRef.current = null
+      }
+      
+      // Three.js オブジェクトのクリーンアップ
       if (controlsRef.current) {
         controlsRef.current.dispose()
+        controlsRef.current = null
       }
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement)
+      
+      if (sceneRef.current) {
+        // シーンのオブジェクトを全て削除
+        while (sceneRef.current.children.length > 0) {
+          sceneRef.current.remove(sceneRef.current.children[0])
+        }
+        sceneRef.current = null
       }
-      renderer.dispose()
+      
+      if (rendererRef.current) {
+        if (container.contains(rendererRef.current.domElement)) {
+          container.removeChild(rendererRef.current.domElement)
+        }
+        rendererRef.current.dispose()
+        rendererRef.current = null
+      }
+      
+      if (cameraRef.current) {
+        cameraRef.current = null
+      }
     }
   }, [modelUrl])
 
