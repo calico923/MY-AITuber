@@ -319,9 +319,13 @@ export function useSpeechRecognition(
       stopListening()
       return false
     } else {
-      return await startListening()
+      // startListeningRefを使用して循環依存を回避
+      if (!startListeningRef.current) {
+        return false
+      }
+      return await startListeningRef.current()
     }
-  }, [isListening, startListening, stopListening])
+  }, [isListening, stopListening])
   
   /**
    * 初期化処理
@@ -416,7 +420,7 @@ export function useSpeechRecognition(
     if (speechOptions.autoStart && manager.getIsSupported()) {
       // 少し遅延してから開始（権限取得のため）
       setTimeout(() => {
-        startListening()
+        startListeningRef.current?.()
       }, 1000)
     }
     
