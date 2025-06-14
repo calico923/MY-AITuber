@@ -80,7 +80,7 @@ export default function VoiceInput({
     onInterimResult: (interimText) => {
       setCurrentTranscript(interimText)
     },
-    onError: (errorMessage) => {
+    onError: (errorMessage, errorType) => {
       console.error('Voice input error:', errorMessage)
       setIsActive(false)
       

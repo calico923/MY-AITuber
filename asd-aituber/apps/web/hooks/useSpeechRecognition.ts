@@ -369,20 +369,24 @@ export function useSpeechRecognition(
         }
       },
       
-      onError: (errorMessage: string) => {
+      onError: (errorMessage: string, rawErrorType?: string) => {
         setError(errorMessage)
         setIsListening(false)
         
-        // Extract error type from error message for auto-retry decision
-        let errorType = 'unknown'
-        if (errorMessage.includes('no-speech')) {
-          errorType = 'no-speech'
-        } else if (errorMessage.includes('not-allowed') || errorMessage.includes('Permission denied')) {
-          errorType = 'not-allowed'
-        } else if (errorMessage.includes('network')) {
-          errorType = 'network'
-        } else if (errorMessage.includes('service-not-allowed')) {
-          errorType = 'service-not-allowed'
+        // Use raw error type from Web Speech API if available, otherwise extract from message
+        let errorType = rawErrorType || 'unknown'
+        
+        // Fallback to message parsing if rawErrorType is not provided
+        if (!rawErrorType) {
+          if (errorMessage.includes('no-speech')) {
+            errorType = 'no-speech'
+          } else if (errorMessage.includes('not-allowed') || errorMessage.includes('Permission denied')) {
+            errorType = 'not-allowed'
+          } else if (errorMessage.includes('network') || errorMessage.includes('Google音声認識サービスへの接続に失敗')) {
+            errorType = 'network'
+          } else if (errorMessage.includes('service-not-allowed')) {
+            errorType = 'service-not-allowed'
+          }
         }
         
         // Auto-retry logic

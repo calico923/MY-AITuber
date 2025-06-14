@@ -63,7 +63,7 @@ export interface SpeechRecognitionCallbacks {
   onResult?: (result: SpeechRecognitionResult) => void
   onStart?: () => void
   onEnd?: () => void
-  onError?: (error: string) => void
+  onError?: (error: string, errorType?: string) => void
   onAudioStart?: () => void
   onAudioEnd?: () => void
 }
@@ -239,7 +239,7 @@ export class SpeechRecognitionManager {
           console.warn('Unknown speech recognition error:', event)
       }
 
-      this.callbacks.onError?.(errorMessage)
+      this.callbacks.onError?.(errorMessage, event.error)
     }
   }
 
