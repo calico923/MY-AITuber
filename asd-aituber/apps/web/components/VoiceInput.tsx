@@ -563,13 +563,13 @@ ${recovery.troubleshooting?.map(step => `• ${step}`).join('\n') || 'なし'}
                   </button>
                 </div>
               )}
-              {error.includes('ネットワークエラー') && (
+              {(error.includes('ネットワークエラー') || error.includes('Google音声認識サービスへの接続に失敗')) && (
                 <div className="mt-2 p-2 bg-red-100 rounded text-xs text-red-700">
                   <p className="font-medium">🔧 トラブルシューティング:</p>
-                  <p>• Wi-Fi/インターネット接続を確認</p>
-                  <p>• VPNを一時的に無効化</p>
-                  <p>• ブラウザの再起動</p>
-                  <p>• 別のブラウザで試す（Chrome推奨）</p>
+                  <p>• インターネット接続を確認してください</p>
+                  <p>• VPNを使用している場合は一時的に無効にしてください</p>
+                  <p>• ブラウザを再起動してページを再読み込みしてください</p>
+                  <p>• 別のネットワーク（モバイルホットスポット等）で試してください</p>
                   <button
                     onClick={handleRunDiagnostic}
                     className="mt-2 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
@@ -665,8 +665,8 @@ ${recovery.troubleshooting?.map(step => `• ${step}`).join('\n') || 'なし'}
         </div>
       </div>
 
-      {/* Auto-retry 状態表示 */}
-      {retryStatus.hasActiveTimer && (
+      {/* Auto-retry 状態表示（ネットワークエラー以外） */}
+      {retryStatus.hasActiveTimer && retryStatus.lastRetryReason !== 'network' && (
         <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           <div className="flex items-center gap-2">
             <span className="text-yellow-500">🔄</span>

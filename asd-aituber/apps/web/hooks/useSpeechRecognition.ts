@@ -151,8 +151,8 @@ export function useSpeechRecognition(
   const shouldRetryError = useCallback((errorType: string): boolean => {
     if (!enableAutoRetry) return false
     
-    // 許可されないエラータイプはリトライしない
-    const noRetryErrors = ['not-allowed', 'service-not-allowed']
+    // 自動リトライすべきでないエラータイプ
+    const noRetryErrors = ['not-allowed', 'service-not-allowed', 'network']
     if (noRetryErrors.includes(errorType)) return false
     
     // リトライ回数が上限に達している場合はリトライしない

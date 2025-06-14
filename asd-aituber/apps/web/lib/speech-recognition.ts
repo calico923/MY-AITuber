@@ -213,8 +213,16 @@ export class SpeechRecognitionManager {
           } else if (!navigator.onLine) {
             errorMessage = '📡 インターネット接続がありません。接続を確認してからもう一度お試しください。'
           } else {
-            // ネットワークエラーの場合、詳細な処理はuseSpeechRecognitionに委譲
-            errorMessage = '🌐 Google音声認識サービスへの接続に失敗しました。'
+            // ネットワークエラーの詳細な対処法を提示
+            errorMessage = `🌐 Google音声認識サービスへの接続に失敗しました。
+
+以下の方法をお試しください：
+• インターネット接続を確認してください
+• VPNを使用している場合は一時的に無効にしてください
+• ブラウザを再起動してページを再読み込みしてください
+• 別のネットワーク（モバイルホットスポットなど）で試してください
+
+解決しない場合は、しばらく時間をおいてから再度お試しください。`
           }
           break
         case 'service-not-allowed':
