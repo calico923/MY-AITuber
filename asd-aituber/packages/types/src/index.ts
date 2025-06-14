@@ -16,6 +16,9 @@ export interface ChatMessage {
   emotion?: Emotion
   // For NT mode: internal emotion might differ from expressed emotion
   internalEmotion?: Emotion
+  // Session management flags for preventing auto-playback on reload
+  isFromSession?: boolean  // True if message was restored from session storage
+  hasBeenSpoken?: boolean  // True if message has already been synthesized to speech
 }
 
 // VRM Animation interface

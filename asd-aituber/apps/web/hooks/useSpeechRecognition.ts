@@ -12,6 +12,12 @@ export interface UseSpeechRecognitionOptions extends SpeechRecognitionOptions {
   onFinalResult?: (transcript: string, confidence: number) => void
   onInterimResult?: (transcript: string) => void
   onError?: (error: string) => void
+  // Auto-retry configuration
+  enableAutoRetry?: boolean
+  maxRetries?: number
+  retryDelay?: number
+  retryBackoffMultiplier?: number
+  maxRetryDelay?: number
 }
 
 export interface UseSpeechRecognitionReturn {
@@ -37,6 +43,16 @@ export interface UseSpeechRecognitionReturn {
   clearError: () => void
   clearTranscript: () => void
   
+  // Auto-retry status
+  retryStatus: {
+    retryCount: number
+    maxRetries: number
+    remainingRetries: number
+    currentDelay: number
+    hasActiveTimer: boolean
+    lastRetryReason: string | null
+  }
+  
   // ブラウザ情報
   browserInfo: {
     isSupported: boolean
@@ -50,6 +66,16 @@ export interface UseSpeechRecognitionReturn {
 export function useSpeechRecognition(
   options: UseSpeechRecognitionOptions = {}
 ): UseSpeechRecognitionReturn {
+  // Auto-retry configuration with defaults
+  const {
+    enableAutoRetry = true,
+    maxRetries = 3,
+    retryDelay = 1000,
+    retryBackoffMultiplier = 1.5,
+    maxRetryDelay = 5000,
+    ...speechOptions
+  } = options
+  
   // 状態管理
   const [isSupported, setIsSupported] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -64,11 +90,53 @@ export function useSpeechRecognition(
   // エラー状態
   const [error, setError] = useState<string | null>(null)
   
+  // Auto-retry state
+  const [retryStatus, setRetryStatus] = useState({
+    retryCount: 0,
+    maxRetries,
+    remainingRetries: maxRetries,
+    currentDelay: retryDelay,
+    hasActiveTimer: false,
+    lastRetryReason: null as string | null
+  })
+  
   // ブラウザ情報
   const [browserInfo] = useState(() => checkSpeechRecognitionSupport())
   
   // マネージャーのref
   const managerRef = useRef<SpeechRecognitionManager | null>(null)
+  
+  // Auto-retry timer ref
+  const retryTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // startListening function ref (循環依存回避用)
+  const startListeningRef = useRef<(() => Promise<boolean>) | null>(null)
+  
+  /**
+   * Auto-retry timer をクリア
+   */
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
+      setRetryStatus(prev => ({ ...prev, hasActiveTimer: false }))
+    }
+  }, [])
+  
+  /**
+   * リトライ状態をリセット
+   */
+  const resetRetryStatus = useCallback(() => {
+    clearRetryTimer()
+    setRetryStatus({
+      retryCount: 0,
+      maxRetries,
+      remainingRetries: maxRetries,
+      currentDelay: retryDelay,
+      hasActiveTimer: false,
+      lastRetryReason: null
+    })
+  }, [clearRetryTimer, maxRetries, retryDelay])
   
   /**
    * エラーをクリア
@@ -76,6 +144,96 @@ export function useSpeechRecognition(
   const clearError = useCallback(() => {
     setError(null)
   }, [])
+  
+  /**
+   * auto-retry を実行すべきかどうかを判定
+   */
+  const shouldRetryError = useCallback((errorType: string): boolean => {
+    if (!enableAutoRetry) return false
+    
+    // 自動リトライすべきでないエラータイプ
+    const noRetryErrors = ['not-allowed', 'service-not-allowed', 'network']
+    if (noRetryErrors.includes(errorType)) return false
+    
+    // リトライ回数が上限に達している場合はリトライしない
+    return retryStatus.retryCount < retryStatus.maxRetries
+  }, [enableAutoRetry, retryStatus.retryCount, retryStatus.maxRetries])
+  
+  /**
+   * auto-retry を実行
+   */
+  const executeRetryRef = useRef<(reason: string) => Promise<boolean>>()
+  
+  const executeRetry = useCallback(async (reason: string) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[useSpeechRecognition] Executing auto-retry for: ${reason}, attempt: ${retryStatus.retryCount + 1}`)
+    }
+    
+    try {
+      // リトライカウントを更新
+      const newRetryCount = retryStatus.retryCount + 1
+      const newDelay = Math.min(retryStatus.currentDelay * retryBackoffMultiplier, maxRetryDelay)
+      
+      setRetryStatus(prev => ({
+        ...prev,
+        retryCount: newRetryCount,
+        remainingRetries: prev.maxRetries - newRetryCount,
+        currentDelay: newDelay,
+        hasActiveTimer: false,
+        lastRetryReason: reason
+      }))
+      
+      // 音声認識を再開始 - startListeningRefを使用して循環依存を回避
+      if (!startListeningRef.current) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[useSpeechRecognition] startListening not available for retry')
+        }
+        return false
+      }
+      
+      const success = await startListeningRef.current()
+      
+      if (success) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[useSpeechRecognition] Auto-retry successful for: ${reason}`)
+        }
+        return true
+      } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`[useSpeechRecognition] Auto-retry failed for: ${reason}`)
+        }
+        return false
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`[useSpeechRecognition] Auto-retry error:`, error)
+      }
+      return false
+    }
+  }, [retryStatus, retryBackoffMultiplier, maxRetryDelay])
+  
+  // RefでexecuteRetryを保存
+  executeRetryRef.current = executeRetry
+  
+  /**
+   * auto-retry をスケジュール
+   */
+  const scheduleRetry = useCallback((reason: string) => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current)
+    }
+    
+    setRetryStatus(prev => ({ ...prev, hasActiveTimer: true }))
+    
+    const delay = retryStatus.currentDelay
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[useSpeechRecognition] Scheduling auto-retry for "${reason}" in ${delay}ms`)
+    }
+    
+    retryTimerRef.current = setTimeout(() => {
+      executeRetryRef.current?.(reason)
+    }, delay)
+  }, [retryStatus.currentDelay])
   
   /**
    * 認識結果をクリア
@@ -130,19 +288,28 @@ export function useSpeechRecognition(
     const success = managerRef.current.start()
     if (!success) {
       setError('音声認識の開始に失敗しました。')
+    } else {
+      // 成功時はリトライ状態をリセット
+      resetRetryStatus()
     }
     
     return success
-  }, [isSupported, isListening, hasPermission, requestPermission, clearError])
+  }, [isSupported, isListening, hasPermission, requestPermission, clearError, resetRetryStatus])
+  
+  // startListeningRefに代入 (循環依存回避用)
+  startListeningRef.current = startListening
   
   /**
    * 音声認識を停止
    */
   const stopListening = useCallback(() => {
+    // 自動リトライを停止
+    clearRetryTimer()
+    
     if (managerRef.current && isListening) {
       managerRef.current.stop()
     }
-  }, [isListening])
+  }, [isListening, clearRetryTimer])
   
   /**
    * 音声認識のトグル
@@ -152,9 +319,13 @@ export function useSpeechRecognition(
       stopListening()
       return false
     } else {
-      return await startListening()
+      // startListeningRefを使用して循環依存を回避
+      if (!startListeningRef.current) {
+        return false
+      }
+      return await startListeningRef.current()
     }
-  }, [isListening, startListening, stopListening])
+  }, [isListening, stopListening])
   
   /**
    * 初期化処理
@@ -171,7 +342,7 @@ export function useSpeechRecognition(
     }
     
     // マネージャーを作成
-    const manager = new SpeechRecognitionManager(options)
+    const manager = new SpeechRecognitionManager(speechOptions)
     
     // コールバック設定
     manager.setCallbacks({
@@ -198,9 +369,41 @@ export function useSpeechRecognition(
         }
       },
       
-      onError: (errorMessage: string) => {
+      onError: (errorMessage: string, rawErrorType?: string) => {
         setError(errorMessage)
         setIsListening(false)
+        
+        // Use raw error type from Web Speech API if available, otherwise extract from message
+        let errorType = rawErrorType || 'unknown'
+        
+        // Fallback to message parsing if rawErrorType is not provided
+        if (!rawErrorType) {
+          if (errorMessage.includes('no-speech')) {
+            errorType = 'no-speech'
+          } else if (errorMessage.includes('not-allowed') || errorMessage.includes('Permission denied')) {
+            errorType = 'not-allowed'
+          } else if (errorMessage.includes('network') || errorMessage.includes('Google音声認識サービスへの接続に失敗')) {
+            errorType = 'network'
+          } else if (errorMessage.includes('service-not-allowed')) {
+            errorType = 'service-not-allowed'
+          }
+        }
+        
+        // Auto-retry logic
+        if (shouldRetryError(errorType)) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[useSpeechRecognition] Auto-retry will be attempted for error: ${errorType}`)
+          }
+          scheduleRetry(errorType)
+        } else {
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[useSpeechRecognition] No auto-retry for error: ${errorType} (disabled or max retries reached)`)
+          }
+          if (retryStatus.retryCount >= retryStatus.maxRetries) {
+            setError(prevError => `${prevError}\n\n最大リトライ回数（${retryStatus.maxRetries}回）に達しました。手動でマイクボタンをクリックしてください。`)
+          }
+        }
+        
         options.onError?.(errorMessage)
       },
       
@@ -218,15 +421,16 @@ export function useSpeechRecognition(
     setIsInitializing(false)
     
     // 自動開始
-    if (options.autoStart && manager.getIsSupported()) {
+    if (speechOptions.autoStart && manager.getIsSupported()) {
       // 少し遅延してから開始（権限取得のため）
       setTimeout(() => {
-        startListening()
+        startListeningRef.current?.()
       }, 1000)
     }
     
     // クリーンアップ
     return () => {
+      clearRetryTimer()
       manager.destroy()
       managerRef.current = null
     }
@@ -237,9 +441,18 @@ export function useSpeechRecognition(
    */
   useEffect(() => {
     if (managerRef.current) {
-      managerRef.current.updateOptions(options)
+      managerRef.current.updateOptions(speechOptions)
     }
-  }, [options.language, options.continuous, options.interimResults, options.maxAlternatives])
+  }, [speechOptions.language, speechOptions.continuous, speechOptions.interimResults, speechOptions.maxAlternatives])
+  
+  /**
+   * コンポーネントアンマウント時のクリーンアップ
+   */
+  useEffect(() => {
+    return () => {
+      clearRetryTimer()
+    }
+  }, [])
   
   return {
     // 状態
@@ -263,6 +476,9 @@ export function useSpeechRecognition(
     requestPermission,
     clearError,
     clearTranscript,
+    
+    // Auto-retry status
+    retryStatus,
     
     // ブラウザ情報
     browserInfo

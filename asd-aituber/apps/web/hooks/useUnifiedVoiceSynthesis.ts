@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Emotion } from '@asd-aituber/types'
+import { performanceMonitor } from '@/lib/performance-monitor'
 import { 
   UnifiedVoiceSynthesis,
   unifiedVoiceSynthesis,
@@ -14,6 +15,7 @@ import {
 } from '@/lib/unified-voice-synthesis'
 import { type VoicevoxSpeaker, type VoicevoxAudioQuery } from '@/lib/voicevox-client'
 import { type SpeechSynthesisCallbacks } from '@/lib/speech-synthesis'
+import { AudioContextManager } from '@/libs/audio-context-manager'
 
 export interface UseUnifiedVoiceSynthesisOptions {
   preferredEngine?: VoiceEngine
@@ -106,9 +108,13 @@ export function useUnifiedVoiceSynthesis(
 
   const isMountedRef = useRef(true)
   const synthesizerRef = useRef<UnifiedVoiceSynthesis | null>(unifiedVoiceSynthesis)
+  const audioManagerRef = useRef<AudioContextManager | null>(null)
 
   // 初期化
   useEffect(() => {
+    // AudioContextManagerの初期化
+    audioManagerRef.current = AudioContextManager.getInstance()
+    
     if (!synthesizerRef.current) {
       // クライアントサイドで初期化
       if (typeof window !== 'undefined') {
@@ -123,7 +129,9 @@ export function useUnifiedVoiceSynthesis(
       try {
         await refreshEngines()
       } catch (error) {
-        console.error('Failed to initialize voice engines:', error)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to initialize voice engines:', error)
+        }
         setError('Failed to initialize voice engines')
       } finally {
         setIsLoading(false)
@@ -135,6 +143,8 @@ export function useUnifiedVoiceSynthesis(
     return () => {
       isMountedRef.current = false
       synthesizerRef.current?.destroy()
+      // AudioContextManagerの状態をリセット
+      audioManagerRef.current?.setIsSpeaking(false)
     }
   }, [])
 
@@ -145,12 +155,16 @@ export function useUnifiedVoiceSynthesis(
         if (isMountedRef.current) {
           setIsSpeaking(true)
           setError(null)
+          // AudioContextManagerに音声合成開始を通知
+          audioManagerRef.current?.setIsSpeaking(true)
         }
         externalCallbacks.onStart?.()
       },
       onEnd: () => {
         if (isMountedRef.current) {
           setIsSpeaking(false)
+          // AudioContextManagerに音声合成終了を通知
+          audioManagerRef.current?.setIsSpeaking(false)
         }
         externalCallbacks.onEnd?.()
       },
@@ -164,6 +178,8 @@ export function useUnifiedVoiceSynthesis(
         if (isMountedRef.current) {
           setError(errorMessage)
           setIsSpeaking(false)
+          // AudioContextManagerにエラー時の状態リセットを通知
+          audioManagerRef.current?.setIsSpeaking(false)
         }
         externalCallbacks.onError?.(errorMessage)
       },
@@ -194,7 +210,9 @@ export function useUnifiedVoiceSynthesis(
         }
       }
     } catch (error) {
-      console.error('Failed to refresh voice engines:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to refresh voice engines:', error)
+      }
       if (isMountedRef.current) {
         setError('Failed to refresh voice engines')
       }
@@ -213,6 +231,10 @@ export function useUnifiedVoiceSynthesis(
 
     setError(null)
 
+    // 🔧 CRITICAL: 音声合成開始前に即座にマイクを停止してエコーループを防止
+    setIsSpeaking(true)
+    audioManagerRef.current?.setIsSpeaking(true)
+
     const options: UnifiedVoiceOptions = {
       text,
       emotion,
@@ -224,15 +246,19 @@ export function useUnifiedVoiceSynthesis(
       volume,
       callbacks: {
         onStart: () => {
+          performanceMonitor.startMeasure('voice-synthesis-processing')
           if (isMountedRef.current) {
-            setIsSpeaking(true)
             setError(null)
+            // 状態は既にspeak開始時に設定済み
           }
           externalCallbacks.onStart?.()
         },
         onEnd: () => {
+          performanceMonitor.endMeasure('voice-synthesis-processing')
           if (isMountedRef.current) {
             setIsSpeaking(false)
+            // AudioContextManagerに音声合成終了を通知
+            audioManagerRef.current?.setIsSpeaking(false)
           }
           externalCallbacks.onEnd?.()
         },
@@ -240,6 +266,8 @@ export function useUnifiedVoiceSynthesis(
           if (isMountedRef.current) {
             setError(errorMessage)
             setIsSpeaking(false)
+            // AudioContextManagerにエラー時の状態リセットを通知
+            audioManagerRef.current?.setIsSpeaking(false)
           }
           externalCallbacks.onError?.(errorMessage)
         },
@@ -259,12 +287,25 @@ export function useUnifiedVoiceSynthesis(
     try {
       if (!synthesizerRef.current) {
         setError('Voice synthesis not available')
+        // AudioContextManagerに状態リセットを通知
+        audioManagerRef.current?.setIsSpeaking(false)
         return false
       }
-      return await synthesizerRef.current.speak(options)
+      
+      const result = await synthesizerRef.current.speak(options)
+      
+      // 成功・失敗に関わらず、finally節で状態をリセット
+      if (!result) {
+        audioManagerRef.current?.setIsSpeaking(false)
+      }
+      
+      return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Voice synthesis failed'
       setError(errorMessage)
+      setIsSpeaking(false)
+      // AudioContextManagerにエラー時の状態リセットを通知
+      audioManagerRef.current?.setIsSpeaking(false)
       return false
     }
   }, [
@@ -284,6 +325,10 @@ export function useUnifiedVoiceSynthesis(
   const stop = useCallback(() => {
     synthesizerRef.current?.stop()
     setIsSpeaking(false)
+    // AudioContextManagerに状態リセットを通知
+    audioManagerRef.current?.setIsSpeaking(false)
+    // Emergency stop for downstream consumers
+    audioManagerRef.current?.emergencyStop()
   }, [])
 
   // 一時停止

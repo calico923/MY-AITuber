@@ -89,7 +89,10 @@ export class SessionManager {
       if (parsed.messages) {
         parsed.messages = parsed.messages.map((msg: any) => ({
           ...msg,
-          timestamp: new Date(msg.timestamp)
+          timestamp: new Date(msg.timestamp),
+          // 復元されたメッセージにセッション関連フラグを付与
+          isFromSession: true,
+          hasBeenSpoken: true
         }))
       }
       if (parsed.metadata) {
