@@ -672,10 +672,12 @@ ${recovery.troubleshooting?.map(step => `• ${step}`).join('\n') || 'なし'}
             <span className="text-yellow-500">🔄</span>
             <div className="flex-1">
               <p className="text-sm text-yellow-800">
-                自動リトライ中... ({retryStatus.retryCount}/{retryStatus.maxRetries})
+                接続を再試行中... ({Math.max(retryStatus.retryCount, 1)}/{retryStatus.maxRetries})
               </p>
               <p className="text-xs text-yellow-600">
-                理由: {retryStatus.lastRetryReason} | 残り: {retryStatus.remainingRetries}回
+                {retryStatus.lastRetryReason === 'network' 
+                  ? 'Google音声認識サービスへの接続エラー' 
+                  : retryStatus.lastRetryReason} | 残り: {retryStatus.remainingRetries}回
               </p>
             </div>
           </div>

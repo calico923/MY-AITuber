@@ -202,7 +202,7 @@ export class SpeechRecognitionManager {
             })
           }
           
-          // ネットワークエラーの場合、限定的な自動リトライを許可
+          // ネットワークエラーの場合、自動リトライシステムに処理を委譲
           this.isListening = false
           
           // HTTPSチェック
@@ -210,30 +210,11 @@ export class SpeechRecognitionManager {
           
           if (!isHTTPS) {
             errorMessage = '🔒 音声認識にはHTTPS接続が必要です。https://でアクセスするか、localhostを使用してください。'
-            // HTTPS以外では自動リトライを無効化
-            if (this.retryTimeoutId !== null) {
-              clearTimeout(this.retryTimeoutId)
-              this.retryTimeoutId = null
-            }
           } else if (!navigator.onLine) {
             errorMessage = '📡 インターネット接続がありません。接続を確認してからもう一度お試しください。'
-          } else if (this.networkErrorCount <= 2) {
-            // 初回〜2回目のネットワークエラーは自動リトライ対象とする
-            errorMessage = `🌐 Google音声認識サービスへの接続に失敗しました。自動でリトライします... (${this.networkErrorCount}/3)`
           } else {
-            // 3回以上の場合は手動対応を促す
-            errorMessage = `🌐 Google音声認識サービスへの接続が安定しません。以下をお試しください：
-• インターネット接続を確認
-• VPNを一時的に無効化
-• ブラウザを再起動してページを再読み込み
-• しばらく時間をおいて再試行
-
-手動でマイクボタンを押し直してください。`
-            // 3回以上では自動リトライを無効化
-            if (this.retryTimeoutId !== null) {
-              clearTimeout(this.retryTimeoutId)
-              this.retryTimeoutId = null
-            }
+            // ネットワークエラーの場合、詳細な処理はuseSpeechRecognitionに委譲
+            errorMessage = '🌐 Google音声認識サービスへの接続に失敗しました。'
           }
           break
         case 'service-not-allowed':
