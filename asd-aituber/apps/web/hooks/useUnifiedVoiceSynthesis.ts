@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Emotion } from '@asd-aituber/types'
+import { performanceMonitor } from '@/lib/performance-monitor'
 import { 
   UnifiedVoiceSynthesis,
   unifiedVoiceSynthesis,
@@ -241,6 +242,7 @@ export function useUnifiedVoiceSynthesis(
       volume,
       callbacks: {
         onStart: () => {
+          performanceMonitor.startMeasure('voice-synthesis-processing')
           if (isMountedRef.current) {
             setIsSpeaking(true)
             setError(null)
@@ -250,6 +252,7 @@ export function useUnifiedVoiceSynthesis(
           externalCallbacks.onStart?.()
         },
         onEnd: () => {
+          performanceMonitor.endMeasure('voice-synthesis-processing')
           if (isMountedRef.current) {
             setIsSpeaking(false)
             // AudioContextManagerに音声合成終了を通知

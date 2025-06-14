@@ -2,6 +2,7 @@ import { VRM } from '@pixiv/three-vrm'
 import type { Emotion } from '@asd-aituber/types'
 import { LipSync, type LipSyncFrame } from './lip-sync'
 import { AudioLipSync } from './audio-lip-sync'
+import { performanceMonitor } from './performance-monitor'
 
 /**
  * VRMアニメーションコントローラー
@@ -111,6 +112,9 @@ export class VRMAnimationController {
    * @param deltaTime - フレーム間の時間（秒）
    */
   update(deltaTime: number): void {
+    // パフォーマンス測定開始
+    performanceMonitor.startMeasure('vrm-animation-update')
+    
     this.clock += deltaTime * 1000 // Convert to ms
     
     this.updateBlinking()
@@ -119,6 +123,9 @@ export class VRMAnimationController {
     this.updateIdleAnimation()
     this.updateLipSync() // リップシンクの更新を追加
     this.updateRealtimeLipSync() // ✅ リアルタイムリップシンクの更新
+    
+    // パフォーマンス測定終了
+    performanceMonitor.endMeasure('vrm-animation-update')
   }
 
   /**
