@@ -4,6 +4,12 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+// Constants
+const DEFAULT_PORT = 3000;
+const HTTPS_PORT = 3002;
+const MAX_PORT_TRIES = 10;
+const SUCCESS_MESSAGE_DELAY = 2000;
+
 class DevHttpsManager {
   constructor() {
     this.projectRoot = path.resolve(__dirname, '..');
@@ -15,12 +21,14 @@ class DevHttpsManager {
     this.legacyCertPath = path.join(this.projectRoot, 'apps', 'web', 'cert.pem');
     this.legacyKeyPath = path.join(this.projectRoot, 'apps', 'web', 'key.pem');
     
-    this.defaultPort = 3000;
-    this.httpsPort = 3002;
+    this.defaultPort = DEFAULT_PORT;
+    this.httpsPort = HTTPS_PORT;
   }
 
   log(message) {
-    console.log(`[Dev HTTPS] ${message}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Dev HTTPS] ${message}`);
+    }
   }
 
   error(message) {
@@ -94,7 +102,7 @@ class DevHttpsManager {
     });
   }
 
-  async findAvailablePort(startPort = this.httpsPort, maxTries = 10) {
+  async findAvailablePort(startPort = this.httpsPort, maxTries = MAX_PORT_TRIES) {
     for (let i = 0; i < maxTries; i++) {
       const port = startPort + i;
       const available = await this.checkPortAvailability(port);

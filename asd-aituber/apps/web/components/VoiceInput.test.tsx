@@ -60,15 +60,15 @@ describe('VoiceInput', () => {
       expect(screen.getByText('カスタムメッセージ')).toBeInTheDocument()
     })
 
-    it('disabled状態でボタンが無効になる', () => {
+    it('isDisabled状態でボタンが無効になる', () => {
       render(<VoiceInput onTranscript={mockOnTranscript} isDisabled={true} />)
       
       const button = screen.getByRole('button')
       expect(button).toBeDisabled()
     })
 
-    // ✅ Task 1.1.1: VoiceInput disabled propのテスト作成
-    it('disabled propがtrueの場合、マイクボタンが無効化される', () => {
+    // ✅ Task 1.1.1: VoiceInput isDisabled propのテスト作成
+    it('isDisabled propがtrueの場合、マイクボタンが無効化される', () => {
       render(<VoiceInput onTranscript={mockOnTranscript} isDisabled={true} />)
       const button = screen.getByRole('button')
       expect(button).toBeDisabled()
@@ -94,8 +94,8 @@ describe('VoiceInput', () => {
       })
     })
 
-    // ❌ 新規テスト: disabled prop変更時の音声認識自動停止
-    it('disabled=trueになった時、進行中の音声認識が自動停止される', async () => {
+    // ❌ 新規テスト: isDisabled prop変更時の音声認識自動停止
+    it('isDisabled=trueになった時、進行中の音声認識が自動停止される', async () => {
       const mockStopListening = vi.fn()
       const mockStartListening = vi.fn().mockResolvedValue(true)
       const onStateChange = vi.fn()
@@ -110,7 +110,7 @@ describe('VoiceInput', () => {
       const { rerender } = render(
         <VoiceInput 
           onTranscript={mockOnTranscript} 
-          disabled={false}
+          isDisabled={false}
           onStateChange={onStateChange}
         />
       )
@@ -131,8 +131,8 @@ describe('VoiceInput', () => {
       })
     })
 
-    // ❌ 新規テスト: disabled=false時の音声認識自動再開
-    it('disabled=falseになった時、前回聞いていた場合は音声認識が自動再開される', async () => {
+    // ❌ 新規テスト: isDisabled=false時の音声認識自動再開
+    it('isDisabled=falseになった時、前回聞いていた場合は音声認識が自動再開される', async () => {
       const mockStopListening = vi.fn()
       const mockStartListening = vi.fn().mockResolvedValue(true)
       const onStateChange = vi.fn()
@@ -179,7 +179,7 @@ describe('VoiceInput', () => {
       rerender(
         <VoiceInput 
           onTranscript={mockOnTranscript} 
-          disabled={false}
+          isDisabled={false}
           onStateChange={onStateChange}
         />
       )

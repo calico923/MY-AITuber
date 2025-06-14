@@ -160,7 +160,9 @@ export function useSpeechRecognition(
    * auto-retry を実行
    */
   const executeRetry = useCallback(async (reason: string) => {
-    console.log(`[useSpeechRecognition] Executing auto-retry for: ${reason}, attempt: ${retryStatus.retryCount + 1}`)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[useSpeechRecognition] Executing auto-retry for: ${reason}, attempt: ${retryStatus.retryCount + 1}`)
+    }
     
     try {
       // リトライカウントを更新
@@ -180,14 +182,20 @@ export function useSpeechRecognition(
       const success = await startListening()
       
       if (success) {
-        console.log(`[useSpeechRecognition] Auto-retry successful for: ${reason}`)
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[useSpeechRecognition] Auto-retry successful for: ${reason}`)
+        }
         return true
       } else {
-        console.warn(`[useSpeechRecognition] Auto-retry failed for: ${reason}`)
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`[useSpeechRecognition] Auto-retry failed for: ${reason}`)
+        }
         return false
       }
     } catch (error) {
-      console.error(`[useSpeechRecognition] Auto-retry error:`, error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`[useSpeechRecognition] Auto-retry error:`, error)
+      }
       return false
     }
   }, [retryStatus, retryBackoffMultiplier, maxRetryDelay, startListening])
@@ -203,7 +211,9 @@ export function useSpeechRecognition(
     setRetryStatus(prev => ({ ...prev, hasActiveTimer: true }))
     
     const delay = retryStatus.currentDelay
-    console.log(`[useSpeechRecognition] Scheduling auto-retry for "${reason}" in ${delay}ms`)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[useSpeechRecognition] Scheduling auto-retry for "${reason}" in ${delay}ms`)
+    }
     
     retryTimerRef.current = setTimeout(() => {
       executeRetry(reason)
@@ -355,10 +365,14 @@ export function useSpeechRecognition(
         
         // Auto-retry logic
         if (shouldRetryError(errorType)) {
-          console.log(`[useSpeechRecognition] Auto-retry will be attempted for error: ${errorType}`)
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[useSpeechRecognition] Auto-retry will be attempted for error: ${errorType}`)
+          }
           scheduleRetry(errorType)
         } else {
-          console.log(`[useSpeechRecognition] No auto-retry for error: ${errorType} (disabled or max retries reached)`)
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[useSpeechRecognition] No auto-retry for error: ${errorType} (disabled or max retries reached)`)
+          }
           if (retryStatus.retryCount >= retryStatus.maxRetries) {
             setError(prevError => `${prevError}\n\n最大リトライ回数（${retryStatus.maxRetries}回）に達しました。手動でマイクボタンをクリックしてください。`)
           }

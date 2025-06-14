@@ -34,6 +34,9 @@ export function useAudioPlaybackState(audio: HTMLAudioElement | null) {
 
     const handleError = (event: Event) => {
       const errorMessage = 'Audio playback error occurred'
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Audio playback error:', event)
+      }
       setIsPlaying(false)
       setError(errorMessage)
     }

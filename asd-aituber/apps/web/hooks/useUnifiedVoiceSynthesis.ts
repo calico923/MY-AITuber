@@ -128,7 +128,9 @@ export function useUnifiedVoiceSynthesis(
       try {
         await refreshEngines()
       } catch (error) {
-        console.error('Failed to initialize voice engines:', error)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to initialize voice engines:', error)
+        }
         setError('Failed to initialize voice engines')
       } finally {
         setIsLoading(false)
@@ -207,7 +209,9 @@ export function useUnifiedVoiceSynthesis(
         }
       }
     } catch (error) {
-      console.error('Failed to refresh voice engines:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to refresh voice engines:', error)
+      }
       if (isMountedRef.current) {
         setError('Failed to refresh voice engines')
       }

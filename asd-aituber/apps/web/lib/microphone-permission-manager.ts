@@ -130,7 +130,9 @@ export class MicrophonePermissionManager {
           recommendedAction: this.getRecommendedAction(browserInfo, permissionResult.state)
         }
       } catch (error) {
-        console.warn('Permissions API failed, falling back to getUserMedia:', error)
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Permissions API failed, falling back to getUserMedia:', error)
+        }
         // Permissions APIが失敗した場合はフォールバック
         return await this.fallbackPermissionCheck(browserInfo)
       }
@@ -269,7 +271,9 @@ export class MicrophonePermissionManager {
 
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(statusData))
     } catch (error) {
-      console.warn('Failed to save microphone permission status to localStorage:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to save microphone permission status to localStorage:', error)
+      }
     }
   }
 
@@ -285,7 +289,9 @@ export class MicrophonePermissionManager {
 
       return JSON.parse(stored)
     } catch (error) {
-      console.error('Failed to parse stored microphone permission status:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to parse stored microphone permission status:', error)
+      }
       return null
     }
   }
@@ -299,7 +305,9 @@ export class MicrophonePermissionManager {
     try {
       localStorage.removeItem(this.STORAGE_KEY)
     } catch (error) {
-      console.warn('Failed to clear stored microphone permission status:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to clear stored microphone permission status:', error)
+      }
     }
   }
 
@@ -419,7 +427,9 @@ export class MicrophonePermissionManager {
    */
   static showErrorToast(error: string) {
     if (!this.toastCallback) {
-      console.warn('Toast callback not set, cannot show notification')
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Toast callback not set, cannot show notification')
+      }
       return
     }
 
