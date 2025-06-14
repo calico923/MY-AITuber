@@ -109,6 +109,9 @@ export function useSpeechRecognition(
   // Auto-retry timer ref
   const retryTimerRef = useRef<NodeJS.Timeout | null>(null)
   
+  // startListening function ref (循環依存回避用)
+  const startListeningRef = useRef<(() => Promise<boolean>) | null>(null)
+  
   /**
    * Auto-retry timer をクリア
    */
@@ -159,6 +162,8 @@ export function useSpeechRecognition(
   /**
    * auto-retry を実行
    */
+  const executeRetryRef = useRef<(reason: string) => Promise<boolean>>()
+  
   const executeRetry = useCallback(async (reason: string) => {
     if (process.env.NODE_ENV === 'development') {
       console.log(`[useSpeechRecognition] Executing auto-retry for: ${reason}, attempt: ${retryStatus.retryCount + 1}`)
@@ -178,8 +183,15 @@ export function useSpeechRecognition(
         lastRetryReason: reason
       }))
       
-      // 音声認識を再開始
-      const success = await startListening()
+      // 音声認識を再開始 - startListeningRefを使用して循環依存を回避
+      if (!startListeningRef.current) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[useSpeechRecognition] startListening not available for retry')
+        }
+        return false
+      }
+      
+      const success = await startListeningRef.current()
       
       if (success) {
         if (process.env.NODE_ENV === 'development') {
@@ -198,7 +210,10 @@ export function useSpeechRecognition(
       }
       return false
     }
-  }, [retryStatus, retryBackoffMultiplier, maxRetryDelay, startListening])
+  }, [retryStatus, retryBackoffMultiplier, maxRetryDelay])
+  
+  // RefでexecuteRetryを保存
+  executeRetryRef.current = executeRetry
   
   /**
    * auto-retry をスケジュール
@@ -216,9 +231,9 @@ export function useSpeechRecognition(
     }
     
     retryTimerRef.current = setTimeout(() => {
-      executeRetry(reason)
+      executeRetryRef.current?.(reason)
     }, delay)
-  }, [retryStatus.currentDelay, executeRetry])
+  }, [retryStatus.currentDelay])
   
   /**
    * 認識結果をクリア
@@ -280,6 +295,9 @@ export function useSpeechRecognition(
     
     return success
   }, [isSupported, isListening, hasPermission, requestPermission, clearError, resetRetryStatus])
+  
+  // startListeningRefに代入 (循環依存回避用)
+  startListeningRef.current = startListening
   
   /**
    * 音声認識を停止
