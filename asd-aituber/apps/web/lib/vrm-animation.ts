@@ -83,8 +83,13 @@ export class VRMAnimationController {
     ]
     
     basicExpressions.forEach(expression => {
-      const preset = expressionManager.getExpressionTrackIndex(expression)
-      this.availableExpressions.set(expression, preset !== -1)
+      try {
+        // @pixiv/three-vrm v3.x のAPIを使用
+        const track = expressionManager.getExpressionTrackName(expression)
+        this.availableExpressions.set(expression, track !== null)
+      } catch (error) {
+        this.availableExpressions.set(expression, false)
+      }
     })
     
     this.expressionsInitialized = true
