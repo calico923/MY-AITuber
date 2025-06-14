@@ -152,7 +152,7 @@ export function useSpeechRecognition(
     if (!enableAutoRetry) return false
     
     // 許可されないエラータイプはリトライしない
-    const noRetryErrors = ['not-allowed', 'service-not-allowed', 'network']
+    const noRetryErrors = ['not-allowed', 'service-not-allowed']
     if (noRetryErrors.includes(errorType)) return false
     
     // リトライ回数が上限に達している場合はリトライしない

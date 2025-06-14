@@ -193,42 +193,47 @@ export class SpeechRecognitionManager {
           break
         case 'network':
           this.networkErrorCount++
-          console.error('🚨 Network error - Auto-retry DISABLED to prevent infinite loop:', {
-            error: event.error,
-            message: event.message,
-            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A',
-            onLine: typeof navigator !== 'undefined' ? navigator.onLine : false,
-            connection: typeof navigator !== 'undefined' ? (navigator as any).connection : null,
-            errorCount: this.networkErrorCount,
-            isListening: this.isListening,
-            protocol: typeof location !== 'undefined' ? location.protocol : 'N/A',
-            hostname: typeof location !== 'undefined' ? location.hostname : 'N/A',
-            isHTTPS: typeof location !== 'undefined' ? (location.protocol === 'https:' || location.hostname === 'localhost') : false
-          })
-          
-          // 自動再試行を完全に無効化して無限ループを防止
-          this.isListening = false
-          
-          // 再試行タイマーをクリア
-          if (this.retryTimeoutId !== null) {
-            clearTimeout(this.retryTimeoutId)
-            this.retryTimeoutId = null
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('🌐 Speech recognition network error:', {
+              error: event.error,
+              message: event.message,
+              errorCount: this.networkErrorCount,
+              isHTTPS: typeof location !== 'undefined' ? (location.protocol === 'https:' || location.hostname === 'localhost') : false
+            })
           }
+          
+          // ネットワークエラーの場合、限定的な自動リトライを許可
+          this.isListening = false
           
           // HTTPSチェック
           const isHTTPS = location.protocol === 'https:' || location.hostname === 'localhost'
           
           if (!isHTTPS) {
             errorMessage = '🔒 音声認識にはHTTPS接続が必要です。https://でアクセスするか、localhostを使用してください。'
+            // HTTPS以外では自動リトライを無効化
+            if (this.retryTimeoutId !== null) {
+              clearTimeout(this.retryTimeoutId)
+              this.retryTimeoutId = null
+            }
           } else if (!navigator.onLine) {
-            errorMessage = '📡 インターネット接続がありません。接続を確認してからマイクボタンを押し直してください。'
+            errorMessage = '📡 インターネット接続がありません。接続を確認してからもう一度お試しください。'
+          } else if (this.networkErrorCount <= 2) {
+            // 初回〜2回目のネットワークエラーは自動リトライ対象とする
+            errorMessage = `🌐 Google音声認識サービスへの接続に失敗しました。自動でリトライします... (${this.networkErrorCount}/3)`
           } else {
-            errorMessage = `🌐 ネットワークエラーが発生しました。以下をお試しください：
+            // 3回以上の場合は手動対応を促す
+            errorMessage = `🌐 Google音声認識サービスへの接続が安定しません。以下をお試しください：
 • インターネット接続を確認
-• VPNやファイアウォール設定を確認  
-• ブラウザを再起動
-• ページを再読み込み
+• VPNを一時的に無効化
+• ブラウザを再起動してページを再読み込み
+• しばらく時間をおいて再試行
+
 手動でマイクボタンを押し直してください。`
+            // 3回以上では自動リトライを無効化
+            if (this.retryTimeoutId !== null) {
+              clearTimeout(this.retryTimeoutId)
+              this.retryTimeoutId = null
+            }
           }
           break
         case 'service-not-allowed':
