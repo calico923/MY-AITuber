@@ -63,7 +63,7 @@ export interface SpeechRecognitionCallbacks {
   onResult?: (result: SpeechRecognitionResult) => void
   onStart?: () => void
   onEnd?: () => void
-  onError?: (error: string) => void
+  onError?: (error: string, errorType?: string) => void
   onAudioStart?: () => void
   onAudioEnd?: () => void
 }
@@ -193,27 +193,43 @@ export class SpeechRecognitionManager {
           break
         case 'network':
           this.networkErrorCount++
-          console.error('🚨 Network error - Auto-retry DISABLED to prevent infinite loop:', {
+          // 詳細なネットワーク診断情報を収集
+          const diagnosticInfo = {
             error: event.error,
             message: event.message,
-            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A',
-            onLine: typeof navigator !== 'undefined' ? navigator.onLine : false,
-            connection: typeof navigator !== 'undefined' ? (navigator as any).connection : null,
             errorCount: this.networkErrorCount,
-            isListening: this.isListening,
-            protocol: typeof location !== 'undefined' ? location.protocol : 'N/A',
-            hostname: typeof location !== 'undefined' ? location.hostname : 'N/A',
-            isHTTPS: typeof location !== 'undefined' ? (location.protocol === 'https:' || location.hostname === 'localhost') : false
-          })
-          
-          // 自動再試行を完全に無効化して無限ループを防止
-          this.isListening = false
-          
-          // 再試行タイマーをクリア
-          if (this.retryTimeoutId !== null) {
-            clearTimeout(this.retryTimeoutId)
-            this.retryTimeoutId = null
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            isHTTPS: typeof location !== 'undefined' ? (location.protocol === 'https:' || location.hostname === 'localhost') : false,
+            origin: typeof location !== 'undefined' ? location.origin : 'unknown',
+            isOnline: navigator.onLine,
+            connection: (navigator as any).connection ? {
+              effectiveType: (navigator as any).connection.effectiveType,
+              downlink: (navigator as any).connection.downlink,
+              rtt: (navigator as any).connection.rtt
+            } : 'not available',
+            speechSynthesis: {
+              available: 'speechSynthesis' in window,
+              voicesLength: 'speechSynthesis' in window ? speechSynthesis.getVoices().length : 0
+            }
           }
+          
+          console.error('🚨 Critical Web Speech API Network Error:', diagnosticInfo)
+          
+          // ローカルストレージに診断情報を保存（デバッグ用）
+          try {
+            const existingLogs = JSON.parse(localStorage.getItem('speech-errors') || '[]')
+            existingLogs.push(diagnosticInfo)
+            // 最新10件のみ保持
+            if (existingLogs.length > 10) existingLogs.shift()
+            localStorage.setItem('speech-errors', JSON.stringify(existingLogs))
+          } catch (e) {
+            console.warn('Failed to save error log to localStorage:', e)
+          }
+          
+          // ネットワークエラーの場合、自動リトライシステムに処理を委譲
+          this.isListening = false
           
           // HTTPSチェック
           const isHTTPS = location.protocol === 'https:' || location.hostname === 'localhost'
@@ -221,14 +237,18 @@ export class SpeechRecognitionManager {
           if (!isHTTPS) {
             errorMessage = '🔒 音声認識にはHTTPS接続が必要です。https://でアクセスするか、localhostを使用してください。'
           } else if (!navigator.onLine) {
-            errorMessage = '📡 インターネット接続がありません。接続を確認してからマイクボタンを押し直してください。'
+            errorMessage = '📡 インターネット接続がありません。接続を確認してからもう一度お試しください。'
           } else {
-            errorMessage = `🌐 ネットワークエラーが発生しました。以下をお試しください：
-• インターネット接続を確認
-• VPNやファイアウォール設定を確認  
-• ブラウザを再起動
-• ページを再読み込み
-手動でマイクボタンを押し直してください。`
+            // ネットワークエラーの詳細な対処法を提示
+            errorMessage = `🌐 Google音声認識サービスへの接続に失敗しました。
+
+以下の方法をお試しください：
+• インターネット接続を確認してください
+• VPNを使用している場合は一時的に無効にしてください
+• ブラウザを再起動してページを再読み込みしてください
+• 別のネットワーク（モバイルホットスポットなど）で試してください
+
+解決しない場合は、しばらく時間をおいてから再度お試しください。`
           }
           break
         case 'service-not-allowed':
@@ -245,7 +265,7 @@ export class SpeechRecognitionManager {
           console.warn('Unknown speech recognition error:', event)
       }
 
-      this.callbacks.onError?.(errorMessage)
+      this.callbacks.onError?.(errorMessage, event.error)
     }
   }
 

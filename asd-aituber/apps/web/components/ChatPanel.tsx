@@ -8,9 +8,10 @@ interface ChatPanelProps {
   messages: ChatMessage[]
   onSendMessage: (content: string) => void
   isLoading?: boolean
+  isVoiceDisabled?: boolean  // ✅ Task 1.2.2: 音声入力無効化用プロパティ追加
 }
 
-export default function ChatPanel({ messages, onSendMessage, isLoading = false }: ChatPanelProps) {
+export default function ChatPanel({ messages, onSendMessage, isLoading = false, isVoiceDisabled = false }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState('')
   const [inputMode, setInputMode] = useState<'text' | 'voice'>('text')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -145,6 +146,7 @@ export default function ChatPanel({ messages, onSendMessage, isLoading = false }
             <VoiceInput
               onTranscript={handleVoiceTranscript}
               isDisabled={isLoading}
+              disabled={isVoiceDisabled}  // ✅ Task 1.2.2: 音声合成中のマイク無効化
               placeholder="マイクボタンを押して話してください..."
             />
           </div>

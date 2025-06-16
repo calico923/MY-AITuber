@@ -61,10 +61,134 @@ describe('VoiceInput', () => {
     })
 
     it('disabled状態でボタンが無効になる', () => {
-      render(<VoiceInput onTranscript={mockOnTranscript} isDisabled={true} />)
+      render(<VoiceInput onTranscript={mockOnTranscript} disabled={true} />)
       
       const button = screen.getByRole('button')
       expect(button).toBeDisabled()
+    })
+
+    // ✅ Task 1.1.1: VoiceInput disabled propのテスト作成
+    it('disabled propがtrueの場合、マイクボタンが無効化される', () => {
+      render(<VoiceInput onTranscript={mockOnTranscript} disabled={true} />)
+      const button = screen.getByRole('button')
+      expect(button).toBeDisabled()
+    })
+
+    // ❌ Task 1.1.3: VoiceInput状態変化通知のテスト作成
+    it('音声認識状態が変化した時にonStateChangeが呼ばれる', async () => {
+      const mockStartListening = vi.fn().mockResolvedValue(true)  // 成功を返すようにモック
+      const onStateChange = vi.fn()
+      
+      mockUseSpeechRecognition.mockReturnValue({
+        ...defaultMockReturn,
+        startListening: mockStartListening
+      })
+      
+      const { getByRole } = render(<VoiceInput onTranscript={mockOnTranscript} onStateChange={onStateChange} />)
+      
+      fireEvent.click(getByRole('button'))
+      
+      // async処理が完了するまで待機
+      await waitFor(() => {
+        expect(onStateChange).toHaveBeenCalledWith(true)
+      })
+    })
+
+    // ❌ 新規テスト: disabled prop変更時の音声認識自動停止
+    it('disabled=trueになった時、進行中の音声認識が自動停止される', async () => {
+      const mockStopListening = vi.fn()
+      const mockStartListening = vi.fn().mockResolvedValue(true)
+      const onStateChange = vi.fn()
+      
+      mockUseSpeechRecognition.mockReturnValue({
+        ...defaultMockReturn,
+        isListening: true,  // 音声認識が進行中
+        startListening: mockStartListening,
+        stopListening: mockStopListening
+      })
+      
+      const { rerender } = render(
+        <VoiceInput 
+          onTranscript={mockOnTranscript} 
+          disabled={false}
+          onStateChange={onStateChange}
+        />
+      )
+      
+      // disabled=trueに変更
+      rerender(
+        <VoiceInput 
+          onTranscript={mockOnTranscript} 
+          disabled={true}
+          onStateChange={onStateChange}
+        />
+      )
+      
+      // 音声認識が自動停止されることを確認
+      await waitFor(() => {
+        expect(mockStopListening).toHaveBeenCalled()
+        expect(onStateChange).toHaveBeenCalledWith(false)
+      })
+    })
+
+    // ❌ 新規テスト: disabled=false時の音声認識自動再開
+    it('disabled=falseになった時、前回聞いていた場合は音声認識が自動再開される', async () => {
+      const mockStopListening = vi.fn()
+      const mockStartListening = vi.fn().mockResolvedValue(true)
+      const onStateChange = vi.fn()
+      
+      // 最初は音声認識中
+      mockUseSpeechRecognition.mockReturnValue({
+        ...defaultMockReturn,
+        isListening: true,
+        startListening: mockStartListening,
+        stopListening: mockStopListening
+      })
+      
+      const { rerender } = render(
+        <VoiceInput 
+          onTranscript={mockOnTranscript} 
+          disabled={false}
+          onStateChange={onStateChange}
+        />
+      )
+      
+      // disabled=trueに変更（音声合成開始）
+      rerender(
+        <VoiceInput 
+          onTranscript={mockOnTranscript} 
+          disabled={true}
+          onStateChange={onStateChange}
+        />
+      )
+      
+      // 音声認識停止を確認
+      await waitFor(() => {
+        expect(mockStopListening).toHaveBeenCalled()
+      })
+      
+      // 音声認識が停止状態になったことをモック
+      mockUseSpeechRecognition.mockReturnValue({
+        ...defaultMockReturn,
+        isListening: false,  // 停止状態
+        startListening: mockStartListening,
+        stopListening: mockStopListening
+      })
+      
+      // disabled=falseに変更（音声合成終了）
+      rerender(
+        <VoiceInput 
+          onTranscript={mockOnTranscript} 
+          disabled={false}
+          onStateChange={onStateChange}
+        />
+      )
+      
+      // 音声認識が自動再開されることを確認
+      await waitFor(() => {
+        expect(mockStartListening).toHaveBeenCalled()  // 自動再開された
+        expect(onStateChange).toHaveBeenCalledWith(true)
+      })
     })
   })
 
@@ -270,7 +394,7 @@ describe('VoiceInput', () => {
         return defaultMockReturn
       })
       
-      render(<VoiceInput onTranscript={mockOnTranscript} isDisabled={true} />)
+      render(<VoiceInput onTranscript={mockOnTranscript} disabled={true} />)
       
       // 結果をシミュレート
       onFinalResultCallback?.('こんにちは', 0.9)

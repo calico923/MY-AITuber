@@ -115,3 +115,11 @@ The core feature switches between two communication modes:
 - Always respect the "Nothing About Us Without Us" principle
 - Individual differences exist within ASD - the system represents common patterns, not absolutes
 - Ensure all features include appropriate disclaimers about individual variability
+
+## 最重要ルール - 新しいルールの追加プロセス
+ユーザーから今回限りではなく常に対応が必要だと思われる指示を受けた場合：
+1. 「これを標準のルールにしますか？」と質問する
+2. YESの回答を得た場合、CLAUDE.mdに追加ルールとして記載する
+3. 以降は標準ルールとして常に適用する
+
+このプロセスにより、プロジェクトのルールを継続的に改善していきます。

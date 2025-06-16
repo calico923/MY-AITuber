@@ -2,6 +2,7 @@ import { VRM } from '@pixiv/three-vrm'
 import type { Emotion } from '@asd-aituber/types'
 import { LipSync, type LipSyncFrame } from './lip-sync'
 import { AudioLipSync } from './audio-lip-sync'
+import { performanceMonitor } from './performance-monitor'
 
 /**
  * VRMアニメーションコントローラー
@@ -20,6 +21,13 @@ export class VRMAnimationController {
   
   // ✅ AudioLipSync integration for real-time audio analysis
   private audioLipSync: AudioLipSync | null = null
+  
+  // Performance optimization: Expression caching
+  private readonly availableExpressions = new Map<string, boolean>()
+  private expressionsInitialized = false
+  
+  // Debug control
+  private static DEBUG_ENABLED = process.env.NODE_ENV === 'development'
   
   // アニメーション設定
   private readonly blinkInterval = { min: 1000, max: 5000 } // ms
@@ -40,16 +48,68 @@ export class VRMAnimationController {
     this.scheduleNextBlink()
     this.setInitialPose()
     
+    // 表情キャッシュを初期化
+    this.initializeExpressionCache()
+    
     // リップシンクを初期化
     this.lipSync = new LipSync()
     
     // ✅ AudioLipSync初期化（aituber-kit方式）
     try {
       this.audioLipSync = new AudioLipSync()
+      if (VRMAnimationController.DEBUG_ENABLED) {
+        console.log('[VRMAnimationController] AudioLipSync initialized successfully')
+      }
     } catch (error) {
       console.warn('[VRMAnimationController] AudioLipSync initialization failed, using fallback:', error)
       this.audioLipSync = null
     }
+  }
+  
+  /**
+   * Performance optimization: 利用可能な表情をキャッシュ
+   */
+  private initializeExpressionCache(): void {
+    if (this.expressionsInitialized) return
+    
+    const expressionManager = this.vrm.expressionManager
+    if (!expressionManager) return
+    
+    // 基本表情のチェック
+    const basicExpressions = [
+      'happy', 'sad', 'angry', 'surprised', 'relaxed', 'neutral',
+      'blink', 'blinkLeft', 'blinkRight',
+      'aa', 'ih', 'ou', 'ee', 'oh', // 母音
+    ]
+    
+    basicExpressions.forEach(expression => {
+      try {
+        // @pixiv/three-vrm v3.x のAPIを使用
+        const track = expressionManager.getExpressionTrackName(expression)
+        this.availableExpressions.set(expression, track !== null)
+      } catch (error) {
+        this.availableExpressions.set(expression, false)
+      }
+    })
+    
+    this.expressionsInitialized = true
+    
+    if (VRMAnimationController.DEBUG_ENABLED) {
+      const available = Array.from(this.availableExpressions.entries())
+        .filter(([_, exists]) => exists)
+        .map(([name, _]) => name)
+      console.log('[VRMAnimationController] Available expressions cached:', available)
+    }
+  }
+  
+  /**
+   * Performance optimization: 表情が利用可能かチェック（キャッシュ使用）
+   */
+  private hasExpression(name: string): boolean {
+    if (!this.expressionsInitialized) {
+      this.initializeExpressionCache()
+    }
+    return this.availableExpressions.get(name) === true
   }
 
   /**
@@ -57,6 +117,9 @@ export class VRMAnimationController {
    * @param deltaTime - フレーム間の時間（秒）
    */
   update(deltaTime: number): void {
+    // パフォーマンス測定開始
+    performanceMonitor.startMeasure('vrm-animation-update')
+    
     this.clock += deltaTime * 1000 // Convert to ms
     
     this.updateBlinking()
@@ -65,6 +128,9 @@ export class VRMAnimationController {
     this.updateIdleAnimation()
     this.updateLipSync() // リップシンクの更新を追加
     this.updateRealtimeLipSync() // ✅ リアルタイムリップシンクの更新
+    
+    // パフォーマンス測定終了
+    performanceMonitor.endMeasure('vrm-animation-update')
   }
 
   /**
@@ -309,7 +375,6 @@ export class VRMAnimationController {
       case 'disgust':
         this.setExpressionSafely('angry', 0.3)
         break
-      case 'neutral':
       default:
         this.setExpressionSafely('neutral', 0.1)
         break
@@ -327,14 +392,10 @@ export class VRMAnimationController {
 
     try {
       if (expressionManager.getExpressionTrackName(expressionName)) {
-        // ログを削減: デバッグ時のみ表示
-        // console.log(`[VRMAnimationController] Setting expression: ${expressionName} = ${value.toFixed(2)}`)
         expressionManager.setValue(expressionName, value)
-      } else {
-        console.warn(`[VRMAnimationController] Expression '${expressionName}' not available`)
       }
     } catch (error) {
-      console.warn(`Failed to set expression ${expressionName}:`, error)
+      // Expression not available, skip silently
     }
   }
 
@@ -417,23 +478,29 @@ export class VRMAnimationController {
   }
 
   /**
-   * 口の形を設定
+   * 口の形を設定 (Performance optimized)
    * @param phoneme - 音韻（a, i, u, e, o, silence）
    * @param intensity - 強度（0-1）
    */
   private setMouthShape(phoneme: string, intensity: number): void {
     const expressionManager = this.vrm.expressionManager
     if (!expressionManager) {
-      console.warn('[VRMAnimationController] No expression manager available')
+      if (VRMAnimationController.DEBUG_ENABLED) {
+        console.warn('[VRMAnimationController] No expression manager available')
+      }
       return
     }
 
-    console.log(`[VRMAnimationController] setMouthShape: ${phoneme}, intensity: ${intensity.toFixed(2)}`)
+    if (VRMAnimationController.DEBUG_ENABLED) {
+      console.log(`[VRMAnimationController] setMouthShape: ${phoneme}, intensity: ${intensity.toFixed(2)}`)
+    }
 
-    // 利用可能な表情を確認（初回のみログ出力）
+    // 利用可能な表情を確認（初回のみ）
     if (this.vowelExpressionInfo === undefined) {
       this.vowelExpressionInfo = this.checkVowelExpressions()
-      console.log('[VRMAnimationController] Mouth expressions:', this.vowelExpressionInfo)
+      if (VRMAnimationController.DEBUG_ENABLED) {
+        console.log('[VRMAnimationController] Mouth expressions:', this.vowelExpressionInfo)
+      }
     }
     
     if (this.vowelExpressionInfo.type !== 'none') {
@@ -1012,17 +1079,13 @@ export class VRMAnimationController {
    */
   private setInitialPose(): void {
     if (!this.vrm.humanoid) {
-      console.warn('No humanoid found for initial pose')
       return
     }
 
-    console.log('Setting initial pose...')
     try {
       // 腕を下ろす
       const leftUpperArm = this.vrm.humanoid.getNormalizedBoneNode('leftUpperArm')
       const rightUpperArm = this.vrm.humanoid.getNormalizedBoneNode('rightUpperArm')
-      
-      console.log('Found bones:', { leftUpperArm: !!leftUpperArm, rightUpperArm: !!rightUpperArm })
       
       if (leftUpperArm) {
         leftUpperArm.rotation.z = Math.PI * 0.2   // 左腕をしっかり下げる
@@ -1076,9 +1139,8 @@ export class VRMAnimationController {
         spine.rotation.x = -Math.PI * 0.01
       }
 
-      console.log('Initial pose setup completed')
     } catch (error) {
-      console.warn('Failed to set initial pose:', error)
+      // Silently handle pose setup errors
     }
   }
 
@@ -1160,5 +1222,32 @@ export class VRMAnimationController {
     console.log('[VRMAnimationController] Available legacy vowel expressions:', availableLegacyVowels)
 
     return expressions
+  }
+  
+  /**
+   * リソースのクリーンアップ
+   */
+  destroy(): void {
+    // アニメーションの停止
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId)
+      this.animationId = null
+    }
+    
+    // AudioLipSyncのクリーンアップ
+    if (this.audioLipSync) {
+      this.audioLipSync.destroy()
+      this.audioLipSync = null
+    }
+    
+    // LipSyncのクリーンアップ
+    this.lipSync.destroy()
+    
+    // 話している状態をリセット
+    this.isSpeaking = false
+    
+    if (VRMAnimationController.DEBUG_ENABLED) {
+      console.log('[VRMAnimationController] Resources cleaned up')
+    }
   }
 }

@@ -17,7 +17,9 @@ export function useChat() {
     if (session) {
       setMessages(session.messages)
       setMode(session.preferences.mode)
-      console.log('Session loaded:', session.sessionId)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Session loaded:', session.sessionId)
+      }
     }
   }, [])
 
@@ -38,7 +40,9 @@ export function useChat() {
 
       // OpenAI統合が利用可能かチェック
       if (openaiClient.isInitialized()) {
-        console.log('Using OpenAI integration for response generation')
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Using OpenAI integration for response generation')
+        }
         // OpenAI直接統合を使用
         const asdSettings: ASDSettings = {
           mode: mode.toLowerCase() as 'asd' | 'nt',
@@ -54,9 +58,13 @@ export function useChat() {
         }))
         openaiMessages.push({ role: 'user', content })
 
-        console.log('Sending request to OpenAI with settings:', asdSettings)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Sending request to OpenAI with settings:', asdSettings)
+        }
         const response = await openaiClient.generateResponse(openaiMessages, asdSettings)
-        console.log('Received response from OpenAI:', response)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Received response from OpenAI:', response)
+        }
         
         assistantMessage = {
           id: (Date.now() + 1).toString(),
@@ -95,7 +103,9 @@ export function useChat() {
       }
       
     } catch (error) {
-      console.error('Failed to send message:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to send message:', error)
+      }
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -126,9 +136,37 @@ export function useChat() {
       await apiClient.clearChatHistory()
       setMessages([])
       SessionManager.clearSession()
-      console.log('Session cleared')
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Session cleared')
+      }
     } catch (error) {
-      console.error('Failed to clear chat history:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to clear chat history:', error)
+      }
+    }
+  }, [])
+
+  // Task 3.2: セッションクリア機能（コールバック対応）
+  const clearConversation = useCallback((callback?: () => void) => {
+    try {
+      // メッセージ配列をクリア
+      setMessages([])
+      
+      // セッションをクリア
+      SessionManager.clearSession()
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Conversation and session cleared')
+      }
+      
+      // コールバックがあれば実行
+      if (callback) {
+        callback()
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to clear conversation:', error)
+      }
     }
   }, [])
 
@@ -161,7 +199,9 @@ export function useChat() {
     sendMessage,
     addMessage,
     clearMessages,
+    clearConversation,
     changeMode,
     loadChatHistory,
+    setMessages, // テスト用に公開
   }
 }
