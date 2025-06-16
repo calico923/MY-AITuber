@@ -46,6 +46,11 @@ export default function VoiceInput({
   const [isSpeaking, setIsSpeaking] = useState(false)
   const audioManagerRef = useRef<AudioContextManager | null>(null)
   
+  // フォールバック機能用の状態
+  const [showTextFallback, setShowTextFallback] = useState(false)
+  const [textInput, setTextInput] = useState('')
+  const [networkErrorCount, setNetworkErrorCount] = useState(0)
+  
   // MicrophonePermissionManager統合用の状態
   const [permissionStatus, setPermissionStatus] = useState<MicrophonePermissionStatus | null>(null)
   const [permissionBrowserInfo, setPermissionBrowserInfo] = useState<BrowserInfo | null>(null)
@@ -81,16 +86,23 @@ export default function VoiceInput({
       setCurrentTranscript(interimText)
     },
     onError: (errorMessage, errorType) => {
-      console.error('Voice input error:', errorMessage)
+      console.error('Voice input error:', errorMessage, 'Type:', errorType)
       setIsActive(false)
+      
+      // ネットワークエラーの場合、カウントを更新してフォールバック表示を検討
+      if (errorType === 'network' || errorMessage.includes('Google音声認識サービスへの接続に失敗')) {
+        setNetworkErrorCount(prev => {
+          const newCount = prev + 1
+          // 3回連続でネットワークエラーが発生したらフォールバック機能を表示
+          if (newCount >= 3) {
+            setShowTextFallback(true)
+          }
+          return newCount
+        })
+      }
       
       // MicrophonePermissionManagerのエラーハンドリングを活用
       MicrophonePermissionManager.showErrorToast(errorMessage)
-      
-      // ネットワークエラーが続く場合は音声認識を完全に停止
-      if (errorMessage.includes('ネットワークエラーが続いています')) {
-        stopListening()
-      }
     }
   })
 
@@ -684,8 +696,66 @@ ${recovery.troubleshooting?.map(step => `• ${step}`).join('\n') || 'なし'}
         </div>
       )}
 
+      {/* テキスト入力フォールバック（ネットワークエラー時） */}
+      {showTextFallback && (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-blue-600">⌨️</span>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-800">音声認識の代替入力</p>
+                <p className="text-xs text-blue-600 mt-1">
+                  ネットワークエラーが継続しています。テキストで入力してください。
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowTextFallback(false)
+                  setNetworkErrorCount(0)
+                }}
+                className="text-blue-500 hover:text-blue-700 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && textInput.trim()) {
+                    onTranscript(textInput.trim())
+                    setTextInput('')
+                  }
+                }}
+                placeholder="メッセージを入力してください..."
+                className="flex-1 px-3 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <button
+                onClick={() => {
+                  if (textInput.trim()) {
+                    onTranscript(textInput.trim())
+                    setTextInput('')
+                  }
+                }}
+                disabled={!textInput.trim()}
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                送信
+              </button>
+            </div>
+            
+            <div className="text-xs text-blue-600">
+              💡 音声認識を再試行するには、上記の✕ボタンで閉じてからマイクボタンをお試しください。
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 使用方法のヒント */}
-      {!isListening && hasPermission && !error && !retryStatus.hasActiveTimer && (
+      {!isListening && hasPermission && !error && !retryStatus.hasActiveTimer && !showTextFallback && (
         <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
           💡 マイクボタンを押して話すと、音声が文字に変換されます。話し終わったら再度ボタンを押してください。
         </div>

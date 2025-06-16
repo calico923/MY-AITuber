@@ -193,13 +193,39 @@ export class SpeechRecognitionManager {
           break
         case 'network':
           this.networkErrorCount++
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('🌐 Speech recognition network error:', {
-              error: event.error,
-              message: event.message,
-              errorCount: this.networkErrorCount,
-              isHTTPS: typeof location !== 'undefined' ? (location.protocol === 'https:' || location.hostname === 'localhost') : false
-            })
+          // 詳細なネットワーク診断情報を収集
+          const diagnosticInfo = {
+            error: event.error,
+            message: event.message,
+            errorCount: this.networkErrorCount,
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            isHTTPS: typeof location !== 'undefined' ? (location.protocol === 'https:' || location.hostname === 'localhost') : false,
+            origin: typeof location !== 'undefined' ? location.origin : 'unknown',
+            isOnline: navigator.onLine,
+            connection: (navigator as any).connection ? {
+              effectiveType: (navigator as any).connection.effectiveType,
+              downlink: (navigator as any).connection.downlink,
+              rtt: (navigator as any).connection.rtt
+            } : 'not available',
+            speechSynthesis: {
+              available: 'speechSynthesis' in window,
+              voicesLength: 'speechSynthesis' in window ? speechSynthesis.getVoices().length : 0
+            }
+          }
+          
+          console.error('🚨 Critical Web Speech API Network Error:', diagnosticInfo)
+          
+          // ローカルストレージに診断情報を保存（デバッグ用）
+          try {
+            const existingLogs = JSON.parse(localStorage.getItem('speech-errors') || '[]')
+            existingLogs.push(diagnosticInfo)
+            // 最新10件のみ保持
+            if (existingLogs.length > 10) existingLogs.shift()
+            localStorage.setItem('speech-errors', JSON.stringify(existingLogs))
+          } catch (e) {
+            console.warn('Failed to save error log to localStorage:', e)
           }
           
           // ネットワークエラーの場合、自動リトライシステムに処理を委譲
